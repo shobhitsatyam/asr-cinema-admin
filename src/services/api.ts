@@ -23,8 +23,10 @@ export interface OrderStatusApiResponse {
 export async function getOrders(): Promise<Order[]> {
   const response = await fetch(`${API_BASE_URL}/orders`, {
     method: 'GET',
+    cache: 'no-store',
     headers: {
       'Accept': 'application/json',
+      'Cache-Control': 'no-cache',
     },
   });
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type {
   FoodItem,
   Category,
@@ -60,6 +60,8 @@ interface AdminContextType {
   // Orders
   orders: Order[];
   updateOrderStatus: (orderId: string, newStatus: OrderStatus) => Promise<void> | void;
+  newOrderAlerts: Order[];
+  dismissNewOrderAlert: (orderId: string) => void;
 
   // Payments
   payments: Payment[];
@@ -118,18 +120,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [coupons, setCoupons] = useState<Coupon[]>(() => loadFromStorage('coupons', initialCoupons));
   const [settings, setSettings] = useState<SystemSettings>(() => loadFromStorage('settings', initialSettings));
 
+  const [newOrderAlerts, setNewOrderAlerts] = useState<Order[]>([]);
   const isFetchingOrdersRef = useRef(false);
   const isUpdatingOrderRef = useRef(false);
   const backoffUntilRef = useRef<number>(0);
+  const isInitialOrdersLoadedRef = useRef(false);
+  const knownOrderIdsRef = useRef<Set<string>>(new Set());
+
+  const dismissNewOrderAlert = useCallback((orderId: string) => {
+    setNewOrderAlerts(prev => prev.filter(o => o.id !== orderId));
+  }, []);
 
   // Load real backend orders on mount & poll every 4 seconds
   useEffect(() => {
     let isMounted = true;
 
     const loadOrders = async () => {
-      // Pause polling when tab is hidden to conserve server rate limit (300 req / 15 min)
-      if (typeof document !== 'undefined' && document.hidden) return;
-
       // Honor backoff if previously rate-limited (HTTP 429)
       if (Date.now() < backoffUntilRef.current) return;
 
@@ -139,7 +145,24 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const backendOrders = await fetchOrdersApi();
         if (isMounted && Array.isArray(backendOrders)) {
-          setOrders(backendOrders);
+          if (!isInitialOrdersLoadedRef.current) {
+            // First successful fetch: record all existing order IDs, DO NOT notify
+            isInitialOrdersLoadedRef.current = true;
+            backendOrders.forEach(o => knownOrderIdsRef.current.add(o.id));
+            setOrders(backendOrders);
+          } else {
+            // Subsequent polls: detect genuinely NEW orders
+            const newlyDetectedOrders = backendOrders.filter(
+              o => !knownOrderIdsRef.current.has(o.id)
+            );
+
+            if (newlyDetectedOrders.length > 0) {
+              newlyDetectedOrders.forEach(o => knownOrderIdsRef.current.add(o.id));
+              setNewOrderAlerts(prev => [...prev, ...newlyDetectedOrders]);
+            }
+
+            setOrders(backendOrders);
+          }
         }
       } catch (err: any) {
         if (isMounted) {
@@ -151,7 +174,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             console.warn('Backend orders temporarily unavailable; preserving orders/mock fallback:', err);
           }
           // If orders is empty, fallback to initialOrders
-          setOrders(prev => (prev && prev.length > 0 ? prev : initialOrders));
+          setOrders(prev => {
+            if (!prev || prev.length === 0) {
+              initialOrders.forEach(o => knownOrderIdsRef.current.add(o.id));
+              return initialOrders;
+            }
+            return prev;
+          });
         }
       } finally {
         isFetchingOrdersRef.current = false;
@@ -601,6 +630,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         orders,
         updateOrderStatus,
+        newOrderAlerts,
+        dismissNewOrderAlert,
 
         payments,
         customers,

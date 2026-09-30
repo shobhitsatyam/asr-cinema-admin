@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAdmin } from '../../context/AdminContext';
 import type { OrderStatus } from '../../types';
 import { Badge } from '../../components/common/Badge';
@@ -19,6 +20,16 @@ export const OrdersPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selectedAudi, setSelectedAudi] = useState<string>('All');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const queryOrderId = searchParams.get('orderId');
+
+  useEffect(() => {
+    if (queryOrderId) {
+      setSelectedOrderId(queryOrderId);
+      setActiveTab('All');
+      setSelectedAudi('All');
+    }
+  }, [queryOrderId]);
 
   const selectedOrder = useMemo(() => {
     return orders.find(o => o.id === selectedOrderId) || null;
@@ -375,7 +386,19 @@ export const OrdersPage: React.FC = () => {
       </div>
 
       {/* Order Detail Drawer */}
-      <OrderDetailDrawer order={selectedOrder} onClose={() => setSelectedOrderId(null)} />
+      <OrderDetailDrawer
+        order={selectedOrder}
+        onClose={() => {
+          setSelectedOrderId(null);
+          if (searchParams.get('orderId')) {
+            setSearchParams(prev => {
+              const next = new URLSearchParams(prev);
+              next.delete('orderId');
+              return next;
+            });
+          }
+        }}
+      />
     </div>
   );
 };

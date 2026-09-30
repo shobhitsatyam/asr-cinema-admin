@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from '../components/layout/Sidebar';
 import { Header } from '../components/layout/Header';
+import { NewOrderNotification } from '../components/orders/NewOrderNotification';
 
 export const AdminLayout: React.FC = () => {
   const [collapsed, setCollapsed] = useState(false);
@@ -37,6 +38,9 @@ export const AdminLayout: React.FC = () => {
           <Outlet />
         </div>
       </main>
+
+      {/* Bottom-Left New Order Notification Toast */}
+      <NewOrderNotification />
     </div>
   );
 };
