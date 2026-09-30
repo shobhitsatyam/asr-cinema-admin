@@ -257,7 +257,6 @@ export const OrdersPage: React.FC = () => {
                   <th>Order ID</th>
                   <th>Seat</th>
                   <th>Items</th>
-                  <th>Customer</th>
                   <th>Amount</th>
                   <th>Payment</th>
                   <th>Status</th>
@@ -310,15 +309,6 @@ export const OrdersPage: React.FC = () => {
                         <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
                           {order.items.length} {order.items.length === 1 ? 'item' : 'items'}
                         </span>
-                      </td>
-
-                      <td>
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{order.customer.name}</span>
-                          <span style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)' }}>
-                            {order.customer.phone}
-                          </span>
-                        </div>
                       </td>
 
                       <td>
