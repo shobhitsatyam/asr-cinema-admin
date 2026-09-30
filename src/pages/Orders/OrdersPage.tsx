@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useAdmin } from '../../context/AdminContext';
-import type { Order, OrderStatus } from '../../types';
+import type { OrderStatus } from '../../types';
 import { Badge } from '../../components/common/Badge';
 import { SearchInput } from '../../components/common/SearchInput';
 import { Pagination } from '../../components/common/Pagination';

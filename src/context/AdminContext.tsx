@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type {
   FoodItem,
   Category,
@@ -24,6 +24,7 @@ import { initialCustomers } from '../data/mockCustomers';
 import { initialCoupons } from '../data/mockCoupons';
 import { initialSettings } from '../data/mockSettings';
 import { useToast } from './ToastContext';
+import { getOrders as fetchOrdersApi, updateOrderStatus as updateOrderStatusApi } from '../services/api';
 
 interface AdminContextType {
   // Foods
@@ -58,7 +59,7 @@ interface AdminContextType {
 
   // Orders
   orders: Order[];
-  updateOrderStatus: (orderId: string, newStatus: OrderStatus) => void;
+  updateOrderStatus: (orderId: string, newStatus: OrderStatus) => Promise<void> | void;
 
   // Payments
   payments: Payment[];
@@ -107,8 +108,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const [orders, setOrders] = useState<Order[]>(() => {
     const loaded = loadFromStorage<Order[]>('orders', initialOrders);
-    const hasAccepted = loaded?.some(o => o.timeline?.some(t => t.status === 'Accepted'));
-    if (!Array.isArray(loaded) || loaded.length < 7 || !hasAccepted) {
+    if (!Array.isArray(loaded) || loaded.length === 0) {
       return initialOrders;
     }
     return loaded;
@@ -117,6 +117,42 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [customers] = useState<Customer[]>(() => loadFromStorage('customers', initialCustomers));
   const [coupons, setCoupons] = useState<Coupon[]>(() => loadFromStorage('coupons', initialCoupons));
   const [settings, setSettings] = useState<SystemSettings>(() => loadFromStorage('settings', initialSettings));
+
+  const isFetchingOrdersRef = useRef(false);
+  const isUpdatingOrderRef = useRef(false);
+
+  // Load real backend orders on mount & poll every 4 seconds
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadOrders = async () => {
+      // Guard against overlapping fetches or updating in flight
+      if (isFetchingOrdersRef.current || isUpdatingOrderRef.current) return;
+      isFetchingOrdersRef.current = true;
+      try {
+        const backendOrders = await fetchOrdersApi();
+        if (isMounted && Array.isArray(backendOrders)) {
+          setOrders(backendOrders);
+        }
+      } catch (err) {
+        if (isMounted) {
+          console.warn('Backend orders temporarily unavailable; preserving orders/mock fallback:', err);
+          // If orders is empty, fallback to initialOrders
+          setOrders(prev => (prev && prev.length > 0 ? prev : initialOrders));
+        }
+      } finally {
+        isFetchingOrdersRef.current = false;
+      }
+    };
+
+    loadOrders();
+    const intervalId = setInterval(loadOrders, 4000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, []);
 
   // Sync to localStorage
   useEffect(() => {
@@ -379,34 +415,44 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Order status handler
-  const updateOrderStatus = (orderId: string, newStatus: OrderStatus) => {
+  const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     const order = orders.find(o => o.id === orderId);
     const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    // Store previous states for rollback if API fails
+    const prevOrders = orders;
+    const prevSeats = seats;
+
+    // Helper to compute updated timeline
+    const getUpdatedTimeline = (ord: Order) => {
+      const updatedTimeline = ord.timeline.map(step => {
+        if (step.status === newStatus) {
+          return { ...step, completed: true, time: timeNow };
+        }
+        return step;
+      });
+
+      const statusExists = updatedTimeline.some(t => t.status === newStatus);
+      if (!statusExists) {
+        updatedTimeline.push({
+          status: newStatus,
+          time: timeNow,
+          note: `Status updated to ${newStatus}`,
+          completed: true
+        });
+      }
+
+      return updatedTimeline;
+    };
+
+    // Optimistically update local state to keep UI responsive
     setOrders(prev =>
       prev.map(ord => {
         if (ord.id === orderId) {
-          const updatedTimeline = ord.timeline.map(step => {
-            if (step.status === newStatus) {
-              return { ...step, completed: true, time: timeNow };
-            }
-            return step;
-          });
-
-          // Also check if new status needs adding to timeline if not existing
-          const statusExists = updatedTimeline.some(t => t.status === newStatus);
-          if (!statusExists) {
-            updatedTimeline.push({
-              status: newStatus,
-              time: timeNow,
-              note: `Status updated to ${newStatus}`,
-              completed: true
-            });
-          }
-
           return {
             ...ord,
             status: newStatus,
-            timeline: updatedTimeline
+            timeline: getUpdatedTimeline(ord)
           };
         }
         return ord;
@@ -430,11 +476,33 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })
     );
 
-    if (order) {
+    try {
+      isUpdatingOrderRef.current = true;
+      const updatedBackendOrder = await updateOrderStatusApi(orderId, newStatus);
+      // Synchronize with returned backend order
+      if (updatedBackendOrder) {
+        setOrders(prev =>
+          prev.map(ord => (ord.id === orderId ? { ...ord, ...updatedBackendOrder } : ord))
+        );
+      }
+      if (order) {
+        showToast(
+          `Order ${order.id} Updated`,
+          `Status moved to ${newStatus} (${order.auditorium} • ${order.seat})`
+        );
+      }
+    } catch (err: any) {
+      console.error(`Failed to update status for order ${orderId}:`, err);
+      // Restore previous state so we do not falsely show the status as saved
+      setOrders(prevOrders);
+      setSeats(prevSeats);
       showToast(
-        `Order ${order.id} Updated`,
-        `Status moved to ${newStatus} (${order.auditorium} • ${order.seat})`
+        'Status Update Failed',
+        err?.message || 'Could not update order status on server. Please try again.',
+        'error'
       );
+    } finally {
+      isUpdatingOrderRef.current = false;
     }
   };
 
