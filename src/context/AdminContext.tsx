@@ -120,12 +120,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const isFetchingOrdersRef = useRef(false);
   const isUpdatingOrderRef = useRef(false);
+  const backoffUntilRef = useRef<number>(0);
 
   // Load real backend orders on mount & poll every 4 seconds
   useEffect(() => {
     let isMounted = true;
 
     const loadOrders = async () => {
+      // Pause polling when tab is hidden to conserve server rate limit (300 req / 15 min)
+      if (typeof document !== 'undefined' && document.hidden) return;
+
+      // Honor backoff if previously rate-limited (HTTP 429)
+      if (Date.now() < backoffUntilRef.current) return;
+
       // Guard against overlapping fetches or updating in flight
       if (isFetchingOrdersRef.current || isUpdatingOrderRef.current) return;
       isFetchingOrdersRef.current = true;
@@ -134,9 +141,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (isMounted && Array.isArray(backendOrders)) {
           setOrders(backendOrders);
         }
-      } catch (err) {
+      } catch (err: any) {
         if (isMounted) {
-          console.warn('Backend orders temporarily unavailable; preserving orders/mock fallback:', err);
+          const errMsg = err?.message || String(err);
+          if (errMsg.includes('429')) {
+            backoffUntilRef.current = Date.now() + 15000;
+            console.warn('Backend rate limit reached (HTTP 429), pausing polling for 15s.');
+          } else {
+            console.warn('Backend orders temporarily unavailable; preserving orders/mock fallback:', err);
+          }
           // If orders is empty, fallback to initialOrders
           setOrders(prev => (prev && prev.length > 0 ? prev : initialOrders));
         }
@@ -148,9 +161,18 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     loadOrders();
     const intervalId = setInterval(loadOrders, 4000);
 
+    // Immediately fetch fresh orders when tab becomes active again
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadOrders();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       isMounted = false;
       clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
