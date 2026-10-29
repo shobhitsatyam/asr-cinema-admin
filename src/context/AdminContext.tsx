@@ -24,22 +24,35 @@ import { initialCustomers } from '../data/mockCustomers';
 import { initialCoupons } from '../data/mockCoupons';
 import { initialSettings } from '../data/mockSettings';
 import { useToast } from './ToastContext';
-import { getOrders as fetchOrdersApi, updateOrderStatus as updateOrderStatusApi } from '../services/api';
+import {
+  getOrders as fetchOrdersApi,
+  updateOrderStatus as updateOrderStatusApi,
+  getProducts as fetchProductsApi,
+  createProduct as createProductApi,
+  updateProduct as updateProductApi,
+  toggleProductAvailability as toggleProductAvailabilityApi,
+  deleteProduct as deleteProductApi,
+  getCategories as fetchCategoriesApi,
+  createCategory as createCategoryApi,
+  updateCategory as updateCategoryApi,
+  toggleCategoryStatus as toggleCategoryStatusApi,
+  deleteCategory as deleteCategoryApi,
+} from '../services/api';
 
 interface AdminContextType {
   // Foods
   foods: FoodItem[];
-  addFood: (food: Omit<FoodItem, 'id' | 'updatedAt'>) => void;
-  updateFood: (id: string, food: Partial<FoodItem>) => void;
-  deleteFood: (id: string) => void;
-  toggleFoodAvailability: (id: string) => void;
+  addFood: (food: Omit<FoodItem, 'id' | 'updatedAt'>) => Promise<void> | void;
+  updateFood: (id: string, food: Partial<FoodItem>) => Promise<void> | void;
+  deleteFood: (id: string) => Promise<void> | void;
+  toggleFoodAvailability: (id: string) => Promise<void> | void;
 
   // Categories
   categories: Category[];
-  addCategory: (category: Omit<Category, 'id' | 'itemCount'>) => void;
-  updateCategory: (id: string, category: Partial<Category>) => void;
-  deleteCategory: (id: string) => void;
-  toggleCategoryStatus: (id: string) => void;
+  addCategory: (category: Omit<Category, 'id' | 'itemCount'>) => Promise<void> | void;
+  updateCategory: (id: string, category: Partial<Category>) => Promise<void> | void;
+  deleteCategory: (id: string) => Promise<void> | void;
+  toggleCategoryStatus: (id: string) => Promise<void> | void;
 
   // Combos
   combos: Combo[];
@@ -110,10 +123,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const [orders, setOrders] = useState<Order[]>(() => {
     const loaded = loadFromStorage<Order[]>('orders', initialOrders);
+    const paidInitial = initialOrders.filter(o => o.paymentStatus === 'Paid');
     if (!Array.isArray(loaded) || loaded.length === 0) {
-      return initialOrders;
+      return paidInitial;
     }
-    return loaded;
+    return loaded.filter(o => o.paymentStatus === 'Paid');
   });
   const [payments] = useState<Payment[]>(() => loadFromStorage('payments', initialPayments));
   const [customers] = useState<Customer[]>(() => loadFromStorage('customers', initialCustomers));
@@ -126,6 +140,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const backoffUntilRef = useRef<number>(0);
   const isInitialOrdersLoadedRef = useRef(false);
   const knownOrderIdsRef = useRef<Set<string>>(new Set());
+  const lastPollingAlertRef = useRef<'401' | '503' | null>(null);
 
   const dismissNewOrderAlert = useCallback((orderId: string) => {
     setNewOrderAlerts(prev => prev.filter(o => o.id !== orderId));
@@ -145,14 +160,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       try {
         const backendOrders = await fetchOrdersApi();
         if (isMounted && Array.isArray(backendOrders)) {
+          lastPollingAlertRef.current = null;
+
+          // Strictly enforce: only verified Paid orders enter operational state
+          const verifiedPaidOrders = backendOrders.filter(o => o.paymentStatus === 'Paid');
+
           if (!isInitialOrdersLoadedRef.current) {
             // First successful fetch: record all existing order IDs, DO NOT notify
             isInitialOrdersLoadedRef.current = true;
-            backendOrders.forEach(o => knownOrderIdsRef.current.add(o.id));
-            setOrders(backendOrders);
+            verifiedPaidOrders.forEach(o => knownOrderIdsRef.current.add(o.id));
+            setOrders(verifiedPaidOrders);
           } else {
-            // Subsequent polls: detect genuinely NEW orders
-            const newlyDetectedOrders = backendOrders.filter(
+            // Subsequent polls: detect genuinely NEW verified paid orders
+            const newlyDetectedOrders = verifiedPaidOrders.filter(
               o => !knownOrderIdsRef.current.has(o.id)
             );
 
@@ -161,26 +181,45 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               setNewOrderAlerts(prev => [...prev, ...newlyDetectedOrders]);
             }
 
-            setOrders(backendOrders);
+            setOrders(verifiedPaidOrders);
           }
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (isMounted) {
-          const errMsg = err?.message || String(err);
-          if (errMsg.includes('429')) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          const is401 = errMsg.includes('401');
+          const is503 = errMsg.includes('503');
+          const is429 = errMsg.includes('429');
+
+          if (is429) {
             backoffUntilRef.current = Date.now() + 15000;
             console.warn('Backend rate limit reached (HTTP 429), pausing polling for 15s.');
-          } else {
-            console.warn('Backend orders temporarily unavailable; preserving orders/mock fallback:', err);
-          }
-          // If orders is empty, fallback to initialOrders
-          setOrders(prev => {
-            if (!prev || prev.length === 0) {
-              initialOrders.forEach(o => knownOrderIdsRef.current.add(o.id));
-              return initialOrders;
+          } else if (is401) {
+            console.warn('Backend orders polling rejected: HTTP 401 Unauthorized (x-admin-key missing or invalid).');
+            if (lastPollingAlertRef.current !== '401') {
+              lastPollingAlertRef.current = '401';
+              showToast(
+                'Authentication Required',
+                'Backend returned HTTP 401. Please configure your Admin Authorization Key in Settings > Admin Profile.',
+                'warning'
+              );
             }
-            return prev;
-          });
+          } else if (is503) {
+            console.warn('Backend orders unavailable: HTTP 503 Service Unavailable.');
+            if (lastPollingAlertRef.current !== '503') {
+              lastPollingAlertRef.current = '503';
+              showToast(
+                'Orders Service Unavailable',
+                'Backend returned HTTP 503 Service Unavailable. Preserving existing orders.',
+                'warning'
+              );
+            }
+          } else {
+            console.warn('Backend orders temporarily unavailable; preserving existing orders:', err);
+          }
+
+          // Strictly preserve existing orders state; never silently populate mock orders on failure
+          setOrders(prev => prev);
         }
       } finally {
         isFetchingOrdersRef.current = false;
@@ -205,7 +244,50 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, []);
 
-  // Sync to localStorage
+  // Reconcile catalog from MongoDB backend on mount (Server is authoritative source of truth)
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCatalog = async () => {
+      try {
+        const [backendProducts, backendCategories] = await Promise.all([
+          fetchProductsApi().catch(err => {
+            console.warn('Backend products not loaded:', err.message);
+            return null;
+          }),
+          fetchCategoriesApi().catch(err => {
+            console.warn('Backend categories not loaded:', err.message);
+            return null;
+          }),
+        ]);
+
+        if (isMounted) {
+          if (Array.isArray(backendProducts)) {
+            setFoods(backendProducts);
+          }
+          if (Array.isArray(backendCategories)) {
+            const currentProds = Array.isArray(backendProducts) ? backendProducts : foods;
+            const reconciledCategories = backendCategories.map(cat => ({
+              ...cat,
+              itemCount: currentProds.filter(
+                p => (p.category || '').toLowerCase() === cat.name.toLowerCase()
+              ).length,
+            }));
+            setCategories(reconciledCategories);
+          }
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.warn('Catalog sync error:', msg);
+      }
+    };
+
+    loadCatalog();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_PREFIX + 'foods', JSON.stringify(foods));
@@ -248,99 +330,175 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (e) { console.error(e); }
   }, [settings]);
 
-  // Food handlers
-  const addFood = (newFoodData: Omit<FoodItem, 'id' | 'updatedAt'>) => {
-    const id = 'food-' + Date.now();
-    const newFood: FoodItem = {
-      ...newFoodData,
-      id,
-      updatedAt: 'Just now'
-    };
-    setFoods(prev => [newFood, ...prev]);
-
-    // Update category itemCount
-    setCategories(prev =>
-      prev.map(cat =>
-        cat.name.toLowerCase() === newFood.category.toLowerCase()
-          ? { ...cat, itemCount: cat.itemCount + 1 }
-          : cat
-      )
-    );
-
-    showToast('Food Added Successfully', `${newFood.name} is now available on the menu.`);
+  // Food handlers connected to backend MongoDB API
+  const addFood = async (newFoodData: Omit<FoodItem, 'id' | 'updatedAt'>) => {
+    try {
+      const created = await createProductApi(newFoodData);
+      setFoods(prev => [created, ...prev.filter(f => f.id !== created.id)]);
+      setCategories(prev =>
+        prev.map(cat =>
+          cat.name.toLowerCase() === created.category.toLowerCase()
+            ? { ...cat, itemCount: cat.itemCount + 1 }
+            : cat
+        )
+      );
+      showToast('Food Added Successfully', `${created.name} is now persisted in MongoDB.`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Server error';
+      console.error('Failed to create food:', err);
+      showToast('Failed to Add Food', msg, 'error');
+    }
   };
 
-  const updateFood = (id: string, updatedFields: Partial<FoodItem>) => {
+  const updateFood = async (id: string, updatedFields: Partial<FoodItem>) => {
+    const prevFoods = foods;
     setFoods(prev =>
       prev.map(item =>
         item.id === id ? { ...item, ...updatedFields, updatedAt: 'Just now' } : item
       )
     );
-    showToast('Food Item Updated', 'Changes were saved successfully.');
+    try {
+      const updated = await updateProductApi(id, updatedFields);
+      setFoods(prev => prev.map(item => (item.id === id ? updated : item)));
+      showToast('Food Item Updated', 'Changes persisted to database.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not update item on server.';
+      console.error(`Failed to update food ${id}:`, err);
+      setFoods(prevFoods);
+      showToast('Update Failed', msg, 'error');
+    }
   };
 
-  const deleteFood = (id: string) => {
+  const deleteFood = async (id: string) => {
     const target = foods.find(f => f.id === id);
     if (!target) return;
-    setFoods(prev => prev.filter(f => f.id !== id));
-    showToast('Item Deleted', `${target.name} has been removed from menu.`, 'info');
+    const prevFoods = foods;
+
+    try {
+      const result = await deleteProductApi(id);
+      if (result.deactivated) {
+        setFoods(prev =>
+          prev.map(item => (item.id === id ? { ...item, isAvailable: false } : item))
+        );
+        showToast('Item Deactivated', result.message, 'warning');
+      } else {
+        setFoods(prev => prev.filter(f => f.id !== id));
+        showToast('Item Deleted', `${target.name} removed from catalog.`, 'info');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not delete item.';
+      console.error(`Failed to delete food ${id}:`, err);
+      setFoods(prevFoods);
+      showToast('Delete Failed', msg, 'error');
+    }
   };
 
-  const toggleFoodAvailability = (id: string) => {
+  const toggleFoodAvailability = async (id: string) => {
     const target = foods.find(f => f.id === id);
     if (!target) return;
     const nextState = !target.isAvailable;
+    const prevFoods = foods;
+
     setFoods(prev =>
       prev.map(item =>
         item.id === id ? { ...item, isAvailable: nextState, updatedAt: 'Just now' } : item
       )
     );
-    showToast(
-      nextState ? 'Item is now Available' : 'Item marked Out of Stock',
-      target.name,
-      nextState ? 'success' : 'warning'
-    );
+
+    try {
+      const updated = await toggleProductAvailabilityApi(id, nextState);
+      setFoods(prev => prev.map(item => (item.id === id ? updated : item)));
+      showToast(
+        nextState ? 'Item is now Available' : 'Item marked Out of Stock',
+        target.name,
+        nextState ? 'success' : 'warning'
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not toggle availability.';
+      console.error(`Failed to toggle availability for ${id}:`, err);
+      setFoods(prevFoods);
+      showToast('Action Failed', msg, 'error');
+    }
   };
 
-  // Category handlers
-  const addCategory = (catData: Omit<Category, 'id' | 'itemCount'>) => {
-    const id = 'cat-' + Date.now();
-    const newCat: Category = {
-      ...catData,
-      id,
-      itemCount: 0,
-      createdDate: catData.createdDate || new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-    };
-    setCategories(prev => [...prev, newCat]);
-    showToast('Category Created', `${newCat.name} category has been added.`);
+  // Category handlers connected to backend MongoDB API
+  const addCategory = async (catData: Omit<Category, 'id' | 'itemCount'>) => {
+    try {
+      const created = await createCategoryApi(catData);
+      setCategories(prev => [...prev.filter(c => c.slug !== created.slug), created]);
+      showToast('Category Created', `${created.name} category has been persisted.`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Server error';
+      console.error('Failed to create category:', err);
+      showToast('Category Creation Failed', msg, 'error');
+    }
   };
 
-  const updateCategory = (id: string, updated: Partial<Category>) => {
+  const updateCategory = async (id: string, updated: Partial<Category>) => {
+    const prevCategories = categories;
     setCategories(prev =>
-      prev.map(cat => (cat.id === id ? { ...cat, ...updated } : cat))
+      prev.map(cat => (cat.id === id || cat.slug === id ? { ...cat, ...updated } : cat))
     );
-    showToast('Category Updated', 'Category details updated successfully.');
+    try {
+      const saved = await updateCategoryApi(id, updated);
+      setCategories(prev =>
+        prev.map(cat => (cat.id === id || cat.slug === id ? { ...cat, ...saved } : cat))
+      );
+      showToast('Category Updated', 'Changes saved to database.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not update category.';
+      console.error(`Failed to update category ${id}:`, err);
+      setCategories(prevCategories);
+      showToast('Update Failed', msg, 'error');
+    }
   };
 
-  const deleteCategory = (id: string) => {
-    const target = categories.find(c => c.id === id);
+  const deleteCategory = async (id: string) => {
+    const target = categories.find(c => c.id === id || c.slug === id);
     if (!target) return;
-    setCategories(prev => prev.filter(c => c.id !== id));
-    showToast('Category Deleted', `${target.name} was removed.`, 'info');
+    const prevCategories = categories;
+
+    try {
+      const result = await deleteCategoryApi(id);
+      if (result.deactivated) {
+        setCategories(prev =>
+          prev.map(c => (c.id === id || c.slug === id ? { ...c, isActive: false } : c))
+        );
+        showToast('Category Deactivated', result.message, 'warning');
+      } else {
+        setCategories(prev => prev.filter(c => c.id !== id && c.slug !== id));
+        showToast('Category Deleted', `${target.name} removed from catalog.`, 'info');
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not delete category.';
+      console.error(`Failed to delete category ${id}:`, err);
+      setCategories(prevCategories);
+      showToast('Delete Failed', msg, 'error');
+    }
   };
 
-  const toggleCategoryStatus = (id: string) => {
-    const target = categories.find(c => c.id === id);
+  const toggleCategoryStatus = async (id: string) => {
+    const target = categories.find(c => c.id === id || c.slug === id);
     if (!target) return;
     const next = !target.isActive;
+    const prevCategories = categories;
+
     setCategories(prev =>
-      prev.map(cat => (cat.id === id ? { ...cat, isActive: next } : cat))
+      prev.map(c => (c.id === id || c.slug === id ? { ...c, isActive: next } : c))
     );
-    showToast(
-      next ? 'Category Enabled' : 'Category Disabled',
-      target.name,
-      next ? 'success' : 'warning'
-    );
+
+    try {
+      const updated = await toggleCategoryStatusApi(id);
+      setCategories(prev =>
+        prev.map(c => (c.id === id || c.slug === id ? { ...c, isActive: updated.isActive } : c))
+      );
+      showToast(`Category ${target.name}`, `Category marked as ${updated.isActive ? 'Active' : 'Inactive'}.`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not toggle category status.';
+      console.error(`Failed to toggle category ${id}:`, err);
+      setCategories(prevCategories);
+      showToast('Action Failed', msg, 'error');
+    }
   };
 
   // Combo handlers
@@ -468,6 +626,13 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Order status handler
   const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     const order = orders.find(o => o.id === orderId);
+
+    // Safety guard: Unpaid or unverified orders cannot advance through kitchen stages
+    if (order && order.paymentStatus !== 'Paid' && newStatus !== 'Cancelled') {
+      showToast('Action Blocked', 'Unpaid orders cannot advance through kitchen stages.', 'warning');
+      return;
+    }
+
     const timeNow = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     // Store previous states for rollback if API fails
@@ -542,14 +707,15 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           `Status moved to ${newStatus} (${order.auditorium} • ${order.seat})`
         );
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(`Failed to update status for order ${orderId}:`, err);
+      const msg = err instanceof Error ? err.message : 'Could not update order status on server. Please try again.';
       // Restore previous state so we do not falsely show the status as saved
       setOrders(prevOrders);
       setSeats(prevSeats);
       showToast(
         'Status Update Failed',
-        err?.message || 'Could not update order status on server. Please try again.',
+        msg,
         'error'
       );
     } finally {

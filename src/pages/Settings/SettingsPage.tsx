@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAdmin } from '../../context/AdminContext';
 import { useToast } from '../../context/ToastContext';
+import { getAdminApiKey, setAdminSessionKey } from '../../services/api';
 import {
   Building2,
   Clock,
@@ -22,6 +23,7 @@ export const SettingsPage: React.FC = () => {
   const [payment, setPayment] = useState({ ...settings.payment });
   const [notifications, setNotifications] = useState({ ...settings.notifications });
   const [profile, setProfile] = useState({ ...settings.profile });
+  const [adminSessionKey, setAdminSessionKeyState] = useState(() => getAdminApiKey());
 
   const handleSaveAll = (e: React.FormEvent) => {
     e.preventDefault();
@@ -472,6 +474,25 @@ export const SettingsPage: React.FC = () => {
                     className="form-input"
                     value={profile.avatarUrl}
                     onChange={e => setProfile({ ...profile, avatarUrl: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">
+                    Admin Authorization Key
+                    <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--color-text-muted)', marginLeft: 8 }}>
+                      (Ephemeral session-only credential for catalog & order status writes)
+                    </span>
+                  </label>
+                  <input
+                    type="password"
+                    className="form-input"
+                    placeholder="Enter x-admin-key for current session"
+                    value={adminSessionKey}
+                    onChange={e => {
+                      setAdminSessionKeyState(e.target.value);
+                      setAdminSessionKey(e.target.value);
+                    }}
                   />
                 </div>
               </div>
