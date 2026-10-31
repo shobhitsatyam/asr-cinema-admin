@@ -473,15 +473,22 @@ export async function updateProductStock(id: string, stock: number, inStock?: bo
 // AUTHENTICATION APIS
 // ----------------------------------------------------
 
-export async function loginApi(username: string, password: string): Promise<{ success: boolean; token: string; user: AdminUser }> {
+export async function loginApi(
+  username: string,
+  password: string
+): Promise<{ success: boolean; token: string; user: AdminUser }> {
   const response = await fetch(`${API_BASE_URL}/auth/login`, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
     body: JSON.stringify({ username, password }),
   });
 
   const data = await response.json().catch(() => ({}));
+
   if (!response.ok || !data.success) {
     throw new Error(data.message || `Login failed: HTTP ${response.status}`);
   }
@@ -490,7 +497,10 @@ export async function loginApi(username: string, password: string): Promise<{ su
     setAdminAuthToken(data.token);
   }
 
-  return data;
+  return {
+    ...data,
+    user: data.user ?? data.admin,
+  };
 }
 
 export async function getMeApi(): Promise<{ success: boolean; user: AdminUser }> {
@@ -501,11 +511,15 @@ export async function getMeApi(): Promise<{ success: boolean; user: AdminUser }>
   });
 
   const data = await response.json().catch(() => ({}));
+
   if (!response.ok || !data.success) {
     throw new Error(data.message || `Session verification failed: HTTP ${response.status}`);
   }
 
-  return data;
+  return {
+    ...data,
+    user: data.user ?? data.admin,
+  };
 }
 
 export async function logoutApi(): Promise<{ success: boolean }> {
@@ -652,10 +666,10 @@ export async function getSeats(auditorium?: string): Promise<Seat[]> {
     const type: Seat['type'] = section.toLowerCase().includes('recliner')
       ? 'Premium Recliner'
       : section.toLowerCase().includes('gold')
-      ? 'Premium Gold'
-      : section.toLowerCase().includes('lounger')
-      ? 'Premium Lounger'
-      : 'Premium Platinum';
+        ? 'Premium Gold'
+        : section.toLowerCase().includes('lounger')
+          ? 'Premium Lounger'
+          : 'Premium Platinum';
 
     return {
       id: String(s._id || s.id || s.token || ''),
