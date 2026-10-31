@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
-  const { orders, foods, seats } = useAdmin();
+  const { orders, foods } = useAdmin();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [liveStats, setLiveStats] = useState<DashboardStats | null>(null);
 
@@ -30,8 +30,6 @@ export const DashboardPage: React.FC = () => {
   const operationalOrders = orders.filter(o => o.paymentStatus === 'Paid');
   const pendingCount = operationalOrders.filter(o => o.status === 'Pending').length;
   const completedCount = operationalOrders.filter(o => o.status === 'Completed' || o.status === 'Served').length;
-  const actualActiveSeats = seats.filter(s => s.status !== 'Blocked').length || 146;
-  const actualTotalSeats = seats.length || 180;
 
   useEffect(() => {
     let isMounted = true;
@@ -62,7 +60,7 @@ export const DashboardPage: React.FC = () => {
 
   const activeSeatsValue = liveStats?.activeSeats !== undefined && liveStats?.totalSeats !== undefined
     ? `${liveStats.activeSeats} / ${liveStats.totalSeats}`
-    : `${actualActiveSeats} / ${actualTotalSeats}`;
+    : '212 / 212';
 
   const chartData = liveStats?.revenueTrend && liveStats.revenueTrend.length > 0
     ? liveStats.revenueTrend

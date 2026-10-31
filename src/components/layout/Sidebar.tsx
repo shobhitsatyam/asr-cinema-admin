@@ -4,11 +4,9 @@ import { useAdmin } from '../../context/AdminContext';
 import {
   LayoutDashboard,
   UtensilsCrossed,
-  Armchair,
   ShoppingBag,
   CreditCard,
   Users,
-  TicketPercent,
   BarChart3,
   Settings,
   ChevronDown,
@@ -47,12 +45,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: LayoutDashboard
     },
     {
-      label: 'Seats & QR',
-      path: '/seats',
-      icon: Armchair,
-      badge: 'Live'
-    },
-    {
       label: 'Orders',
       path: '/orders',
       icon: ShoppingBag,
@@ -69,11 +61,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Users
     },
     {
-      label: 'Coupons',
-      path: '/coupons',
-      icon: TicketPercent
-    },
-    {
       label: 'Reports',
       path: '/reports',
       icon: BarChart3
@@ -86,7 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const menuSubItems = [
-    { label: 'Food Items', path: '/menu/foods', icon: Pizza },
+    { label: 'Food Menu Management', path: '/menu/foods', icon: Pizza },
     { label: 'Categories', path: '/menu/categories', icon: FolderTree },
     { label: 'Combos', path: '/menu/combos', icon: Layers }
   ];

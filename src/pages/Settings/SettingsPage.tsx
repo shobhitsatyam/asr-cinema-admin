@@ -4,9 +4,6 @@ import { useToast } from '../../context/ToastContext';
 import { getAdminApiKey, setAdminSessionKey } from '../../services/api';
 import {
   Building2,
-  Clock,
-  CreditCard,
-  Bell,
   User,
   Save
 } from 'lucide-react';
@@ -15,33 +12,25 @@ export const SettingsPage: React.FC = () => {
   const { settings, updateSettings } = useAdmin();
   const { showToast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<'general' | 'orders' | 'payment' | 'notifications' | 'profile'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'profile'>('general');
 
-  // Local state initialized from admin context settings
+  // Local state initialized from admin context settings (only Cinema Info and Profile)
   const [general, setGeneral] = useState({ ...settings.general });
-  const [orders, setOrders] = useState({ ...settings.orders });
-  const [payment, setPayment] = useState({ ...settings.payment });
-  const [notifications, setNotifications] = useState({ ...settings.notifications });
   const [profile, setProfile] = useState({ ...settings.profile });
   const [adminSessionKey, setAdminSessionKeyState] = useState(() => getAdminApiKey());
 
   const handleSaveAll = (e: React.FormEvent) => {
     e.preventDefault();
     updateSettings({
+      ...settings,
       general,
-      orders,
-      payment,
-      notifications,
       profile
     });
-    showToast('Settings Saved', 'All cinema configurations have been updated successfully.');
+    showToast('Settings Saved', 'Cinema info and administrator profile updated successfully.');
   };
 
   const tabs = [
     { id: 'general', label: 'Cinema Info', icon: Building2 },
-    { id: 'orders', label: 'Order Rules', icon: Clock },
-    { id: 'payment', label: 'Payments & GST', icon: CreditCard },
-    { id: 'notifications', label: 'Alerts & KDS', icon: Bell },
     { id: 'profile', label: 'Admin Profile', icon: User }
   ];
 
@@ -70,7 +59,7 @@ export const SettingsPage: React.FC = () => {
             System & Cinema Settings
           </h2>
           <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-            Configure cinema details, in-theatre ordering rules, payment gateways, and admin access.
+            Configure cinema details and manager authentication.
           </p>
         </div>
 
@@ -99,7 +88,7 @@ export const SettingsPage: React.FC = () => {
                 <button
                   key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(tab.id as any)}
+                  onClick={() => setActiveTab(tab.id as 'general' | 'profile')}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -204,223 +193,6 @@ export const SettingsPage: React.FC = () => {
               </div>
             )}
 
-            {/* Order Settings */}
-            {activeTab === 'orders' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                <div>
-                  <h3 style={{ fontFamily: 'var(--font-brand)', fontSize: '1.2rem', fontWeight: 700 }}>
-                    Order & Kitchen Rules
-                  </h3>
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
-                    Concession preparation SLA and automatic acceptance protocols.
-                  </p>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Default Target Preparation SLA</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={orders.defaultPrepTime}
-                      onChange={e => setOrders({ ...orders, defaultPrepTime: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Max Active Orders Allowed per Seat</label>
-                    <input
-                      type="number"
-                      className="form-input"
-                      min={1}
-                      max={5}
-                      value={orders.maxActiveOrdersPerSeat}
-                      onChange={e => setOrders({ ...orders, maxActiveOrdersPerSeat: Number(e.target.value) })}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', borderRadius: 10, backgroundColor: '#FAFAFB', border: '1px solid var(--color-border-subtle)' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Auto-Accept In-Seat Orders</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        Immediately dispatch incoming seat orders directly to kitchen queue
-                      </div>
-                    </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={orders.autoAcceptOrders}
-                        onChange={e => setOrders({ ...orders, autoAcceptOrders: e.target.checked })}
-                      />
-                      <span className="toggle-slider" />
-                    </label>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', borderRadius: 10, backgroundColor: '#FAFAFB', border: '1px solid var(--color-border-subtle)' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Audio Alerts for Incoming Orders</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        Play acoustic chime when a patron places a food order
-                      </div>
-                    </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={orders.orderAlertSound}
-                        onChange={e => setOrders({ ...orders, orderAlertSound: e.target.checked })}
-                      />
-                      <span className="toggle-slider" />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Payment Settings */}
-            {activeTab === 'payment' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                <div>
-                  <h3 style={{ fontFamily: 'var(--font-brand)', fontSize: '1.2rem', fontWeight: 700 }}>
-                    Payment Methods & Cinema Taxation
-                  </h3>
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
-                    Enable payment collection modes and configure applicable GST rates.
-                  </p>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">Currency Symbol</label>
-                    <input
-                      type="text"
-                      className="form-input"
-                      value={payment.currency}
-                      onChange={e => setPayment({ ...payment, currency: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label">GST Tax Rate (%)</label>
-                    <input
-                      type="number"
-                      className="form-input"
-                      value={payment.gstRate}
-                      onChange={e => setPayment({ ...payment, gstRate: Number(e.target.value) })}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingTop: 10 }}>
-                  <label className="form-label">Active Patron Payment Gateways</label>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--color-border-subtle)' }}>
-                    <span>UPI (Google Pay, PhonePe, Paytm QR)</span>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={payment.enableUPI}
-                        onChange={e => setPayment({ ...payment, enableUPI: e.target.checked })}
-                      />
-                      <span className="toggle-slider" />
-                    </label>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--color-border-subtle)' }}>
-                    <span>Credit & Debit Cards (Visa / Mastercard / RuPay)</span>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={payment.enableCards}
-                        onChange={e => setPayment({ ...payment, enableCards: e.target.checked })}
-                      />
-                      <span className="toggle-slider" />
-                    </label>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', borderRadius: 8, border: '1px solid var(--color-border-subtle)' }}>
-                    <span>Cash on Delivery / Counter Pickup</span>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={payment.enableCash}
-                        onChange={e => setPayment({ ...payment, enableCash: e.target.checked })}
-                      />
-                      <span className="toggle-slider" />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Notifications Settings */}
-            {activeTab === 'notifications' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                <div>
-                  <h3 style={{ fontFamily: 'var(--font-brand)', fontSize: '1.2rem', fontWeight: 700 }}>
-                    Operations & Staff Notifications
-                  </h3>
-                  <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
-                    Trigger real-time notifications for kitchen supervisors and runners.
-                  </p>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', borderRadius: 10, border: '1px solid var(--color-border-subtle)' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Instant Order Alerts</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        Push notification in header bar when seat scan order arrives
-                      </div>
-                    </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={notifications.orderAlerts}
-                        onChange={e => setNotifications({ ...notifications, orderAlerts: e.target.checked })}
-                      />
-                      <span className="toggle-slider" />
-                    </label>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', borderRadius: 10, border: '1px solid var(--color-border-subtle)' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Payment Confirmation Alerts</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        Notify staff when transaction payment completes successfully
-                      </div>
-                    </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={notifications.paymentAlerts}
-                        onChange={e => setNotifications({ ...notifications, paymentAlerts: e.target.checked })}
-                      />
-                      <span className="toggle-slider" />
-                    </label>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', borderRadius: 10, border: '1px solid var(--color-border-subtle)' }}>
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>Low Stock Concession Alerts</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                        Flag items when popcorn kernel or beverage supply dips below threshold
-                      </div>
-                    </div>
-                    <label className="toggle-switch">
-                      <input
-                        type="checkbox"
-                        checked={notifications.stockLowAlerts}
-                        onChange={e => setNotifications({ ...notifications, stockLowAlerts: e.target.checked })}
-                      />
-                      <span className="toggle-slider" />
-                    </label>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Admin Profile */}
             {activeTab === 'profile' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -514,9 +286,6 @@ export const SettingsPage: React.FC = () => {
                 className="btn btn-secondary"
                 onClick={() => {
                   setGeneral({ ...settings.general });
-                  setOrders({ ...settings.orders });
-                  setPayment({ ...settings.payment });
-                  setNotifications({ ...settings.notifications });
                   setProfile({ ...settings.profile });
                   showToast('Reverted', 'Settings restored to saved values.', 'info');
                 }}
@@ -535,3 +304,5 @@ export const SettingsPage: React.FC = () => {
     </div>
   );
 };
+
+export default SettingsPage;

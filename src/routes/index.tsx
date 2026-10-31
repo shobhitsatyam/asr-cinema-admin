@@ -7,11 +7,9 @@ import { DashboardPage } from '../pages/Dashboard/DashboardPage';
 import { FoodItemsPage } from '../pages/Menu/FoodItemsPage';
 import { CategoriesPage } from '../pages/Menu/CategoriesPage';
 import { CombosPage } from '../pages/Menu/CombosPage';
-import { SeatsPage } from '../pages/Seats/SeatsPage';
 import { OrdersPage } from '../pages/Orders/OrdersPage';
 import { PaymentsPage } from '../pages/Payments/PaymentsPage';
 import { CustomersPage } from '../pages/Customers/CustomersPage';
-import { CouponsPage } from '../pages/Coupons/CouponsPage';
 import { ReportsPage } from '../pages/Reports/ReportsPage';
 import { SettingsPage } from '../pages/Settings/SettingsPage';
 
@@ -35,11 +33,9 @@ export const AppRoutes: React.FC = () => {
             <Route path="combos" element={<CombosPage />} />
           </Route>
 
-          <Route path="seats" element={<SeatsPage />} />
           <Route path="orders" element={<OrdersPage />} />
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="customers" element={<CustomersPage />} />
-          <Route path="coupons" element={<CouponsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="settings" element={<SettingsPage />} />
 

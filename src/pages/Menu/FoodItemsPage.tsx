@@ -17,7 +17,6 @@ import {
   Utensils,
   CheckCircle,
   AlertCircle,
-  FolderTree,
   Clock
 } from 'lucide-react';
 
@@ -28,6 +27,7 @@ export const FoodItemsPage: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [selectedType, setSelectedType] = useState<string>('All');
+  const [selectedAvailability, setSelectedAvailability] = useState<string>('All');
   const [selectedStock, setSelectedStock] = useState<string>('All');
 
   // Modals & Drawers state
@@ -36,6 +36,10 @@ export const FoodItemsPage: React.FC = () => {
   const [foodToView, setFoodToView] = useState<FoodItem | null>(null);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
+  // Loading states for actions
+  const [updatingAvailabilityId, setUpdatingAvailabilityId] = useState<string | null>(null);
+  const [updatingStockId, setUpdatingStockId] = useState<string | null>(null);
+
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 8;
@@ -43,9 +47,9 @@ export const FoodItemsPage: React.FC = () => {
   // Stats calculation
   const totalItems = foods.length;
   const availableCount = foods.filter(f => f.isAvailable).length;
-  const outOfStockCount = foods.filter(f => !f.isAvailable || (f.stock ?? 100) === 0).length;
-  const lowStockCount = foods.filter(f => (f.stock ?? 100) > 0 && (f.stock ?? 100) < 10).length;
-  const categoriesCount = categories.length;
+  const unavailableCount = foods.filter(f => !f.isAvailable).length;
+  const lowStockCount = foods.filter(f => (f.stock ?? 100) > 0 && (f.stock ?? 100) <= 10).length;
+  const outOfStockCount = foods.filter(f => (f.stock ?? 100) === 0).length;
 
   // Filtered foods
   const filteredFoods = useMemo(() => {
@@ -60,16 +64,21 @@ export const FoodItemsPage: React.FC = () => {
 
       const matchType = selectedType === 'All' || food.type === selectedType;
 
+      const matchAvailability =
+        selectedAvailability === 'All' ||
+        (selectedAvailability === 'Available' && food.isAvailable) ||
+        (selectedAvailability === 'Unavailable' && !food.isAvailable);
+
       const stockVal = food.stock !== undefined ? food.stock : 100;
       const matchStock =
         selectedStock === 'All' ||
-        (selectedStock === 'InStock' && stockVal >= 10 && food.isAvailable) ||
-        (selectedStock === 'LowStock' && stockVal > 0 && stockVal < 10) ||
-        (selectedStock === 'OutOfStock' && (stockVal === 0 || !food.isAvailable));
+        (selectedStock === 'InStock' && stockVal > 10) ||
+        (selectedStock === 'LowStock' && stockVal > 0 && stockVal <= 10) ||
+        (selectedStock === 'OutOfStock' && stockVal === 0);
 
-      return matchSearch && matchCategory && matchType && matchStock;
+      return matchSearch && matchCategory && matchType && matchAvailability && matchStock;
     });
-  }, [foods, search, selectedCategory, selectedType, selectedStock]);
+  }, [foods, search, selectedCategory, selectedType, selectedAvailability, selectedStock]);
 
   const paginatedFoods = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
@@ -77,6 +86,37 @@ export const FoodItemsPage: React.FC = () => {
   }, [filteredFoods, currentPage]);
 
   const targetFoodToDelete = foods.find(f => f.id === deleteTargetId);
+
+  const handleToggleAvailability = async (id: string) => {
+    if (updatingAvailabilityId === id) return;
+    setUpdatingAvailabilityId(id);
+    try {
+      await toggleFoodAvailability(id);
+    } finally {
+      setUpdatingAvailabilityId(null);
+    }
+  };
+
+  const handleUpdateStock = async (id: string, newStock: number) => {
+    if (updatingStockId === id || newStock < 0) return;
+    setUpdatingStockId(id);
+    try {
+      await updateStock(id, newStock);
+    } finally {
+      setUpdatingStockId(null);
+    }
+  };
+
+  const handleCustomStockPrompt = (food: FoodItem) => {
+    const current = food.stock !== undefined ? food.stock : 100;
+    const input = window.prompt(`Enter new inventory stock for "${food.name}":`, String(current));
+    if (input !== null) {
+      const num = parseInt(input.trim(), 10);
+      if (!isNaN(num) && num >= 0) {
+        handleUpdateStock(food.id, num);
+      }
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -100,10 +140,10 @@ export const FoodItemsPage: React.FC = () => {
               lineHeight: 1.2
             }}
           >
-            Food Items
+            Food Menu Management
           </h2>
           <p style={{ fontSize: '0.875rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
-            Manage cinema food and beverage inventory
+            Manage cinema food catalog, patron QR menu availability, and real-time inventory stock levels.
           </p>
         </div>
 
@@ -116,15 +156,15 @@ export const FoodItemsPage: React.FC = () => {
           }}
         >
           <Plus size={18} />
-          <span>Add Food</span>
+          <span>Add Food Item</span>
         </button>
       </div>
 
-      {/* 4 Stats Cards */}
+      {/* 5 Stats Cards */}
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: 16
         }}
       >
@@ -144,7 +184,7 @@ export const FoodItemsPage: React.FC = () => {
             <Utensils size={22} />
           </div>
           <div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Total Food Items</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Total Products</div>
             <div style={{ fontFamily: 'var(--font-brand)', fontSize: '1.4rem', fontWeight: 700 }}>
               {totalItems}
             </div>
@@ -180,19 +220,19 @@ export const FoodItemsPage: React.FC = () => {
               width: 44,
               height: 44,
               borderRadius: 12,
-              backgroundColor: '#FEF2F2',
+              backgroundColor: '#F3F4F6',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#DC2626'
+              color: '#6B7280'
             }}
           >
             <AlertCircle size={22} />
           </div>
           <div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Out of Stock</div>
-            <div style={{ fontFamily: 'var(--font-brand)', fontSize: '1.4rem', fontWeight: 700, color: '#DC2626' }}>
-              {outOfStockCount}
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Unavailable</div>
+            <div style={{ fontFamily: 'var(--font-brand)', fontSize: '1.4rem', fontWeight: 700, color: '#6B7280' }}>
+              {unavailableCount}
             </div>
           </div>
         </div>
@@ -213,7 +253,7 @@ export const FoodItemsPage: React.FC = () => {
             <AlertCircle size={22} />
           </div>
           <div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Low Stock (&lt;10)</div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Low Stock (≤10)</div>
             <div style={{ fontFamily: 'var(--font-brand)', fontSize: '1.4rem', fontWeight: 700, color: '#D97706' }}>
               {lowStockCount}
             </div>
@@ -226,19 +266,19 @@ export const FoodItemsPage: React.FC = () => {
               width: 44,
               height: 44,
               borderRadius: 12,
-              backgroundColor: '#F5F3FF',
+              backgroundColor: '#FEF2F2',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#7C3AED'
+              color: '#DC2626'
             }}
           >
-            <FolderTree size={22} />
+            <AlertCircle size={22} />
           </div>
           <div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Categories</div>
-            <div style={{ fontFamily: 'var(--font-brand)', fontSize: '1.4rem', fontWeight: 700 }}>
-              {categoriesCount}
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Out of Stock</div>
+            <div style={{ fontFamily: 'var(--font-brand)', fontSize: '1.4rem', fontWeight: 700, color: '#DC2626' }}>
+              {outOfStockCount}
             </div>
           </div>
         </div>
@@ -266,7 +306,7 @@ export const FoodItemsPage: React.FC = () => {
                 setCurrentPage(1);
               }}
               placeholder="Search food by name, category..."
-              width={260}
+              width={240}
             />
 
             {/* Category Filter */}
@@ -287,6 +327,37 @@ export const FoodItemsPage: React.FC = () => {
               ))}
             </select>
 
+            {/* Availability Filter */}
+            <select
+              className="form-select"
+              style={{ width: 'auto', height: 38, fontSize: '0.8125rem' }}
+              value={selectedAvailability}
+              onChange={e => {
+                setSelectedAvailability(e.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="All">All Availability</option>
+              <option value="Available">Available for Order</option>
+              <option value="Unavailable">Unavailable</option>
+            </select>
+
+            {/* Inventory / Stock Filter */}
+            <select
+              className="form-select"
+              style={{ width: 'auto', height: 38, fontSize: '0.8125rem' }}
+              value={selectedStock}
+              onChange={e => {
+                setSelectedStock(e.target.value);
+                setCurrentPage(1);
+              }}
+            >
+              <option value="All">All Stock Levels</option>
+              <option value="InStock">In Stock (&gt; 10)</option>
+              <option value="LowStock">Low Stock (1–10)</option>
+              <option value="OutOfStock">Out of Stock (0)</option>
+            </select>
+
             {/* Diet Filter */}
             <select
               className="form-select"
@@ -300,22 +371,6 @@ export const FoodItemsPage: React.FC = () => {
               <option value="All">All Diets</option>
               <option value="Veg">Veg Only</option>
               <option value="Non-Veg">Non-Veg Only</option>
-            </select>
-
-            {/* Inventory / Stock Filter */}
-            <select
-              className="form-select"
-              style={{ width: 'auto', height: 38, fontSize: '0.8125rem' }}
-              value={selectedStock}
-              onChange={e => {
-                setSelectedStock(e.target.value);
-                setCurrentPage(1);
-              }}
-            >
-              <option value="All">All Inventory</option>
-              <option value="InStock">Sufficient Stock (10+)</option>
-              <option value="LowStock">Low Stock (&lt; 10)</option>
-              <option value="OutOfStock">Out of Stock (0)</option>
             </select>
           </div>
 
@@ -334,6 +389,7 @@ export const FoodItemsPage: React.FC = () => {
               setSearch('');
               setSelectedCategory('All');
               setSelectedType('All');
+              setSelectedAvailability('All');
               setSelectedStock('All');
             }}
           />
@@ -342,25 +398,27 @@ export const FoodItemsPage: React.FC = () => {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Food</th>
+                  <th>Food Product</th>
                   <th>Category</th>
                   <th>Type</th>
                   <th>Price</th>
-                  <th>Stock & Restock</th>
-                  <th>Availability</th>
-                  <th>Preparation Time</th>
-                  <th>Updated</th>
+                  <th>Stock Inventory</th>
+                  <th>Stock Status</th>
+                  <th>Patron Availability</th>
+                  <th>Prep Time</th>
                   <th style={{ textAlign: 'right' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {paginatedFoods.map(food => {
                   const stockCount = food.stock !== undefined ? food.stock : 100;
-                  const isLow = stockCount > 0 && stockCount < 10;
-                  const isOut = stockCount === 0 || !food.isAvailable;
+                  const isLow = stockCount > 0 && stockCount <= 10;
+                  const isOut = stockCount === 0;
+                  const isUpdatingThisStock = updatingStockId === food.id;
+                  const isUpdatingThisAvail = updatingAvailabilityId === food.id;
 
                   return (
-                    <tr key={food.id}>
+                    <tr key={food.id} style={{ opacity: isUpdatingThisStock || isUpdatingThisAvail ? 0.75 : 1 }}>
                       {/* Food Column (Image + Name + Subtitle) */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -369,8 +427,8 @@ export const FoodItemsPage: React.FC = () => {
                             alt={food.name}
                             onClick={() => setFoodToView(food)}
                             style={{
-                              width: 46,
-                              height: 46,
+                              width: 48,
+                              height: 48,
                               borderRadius: 8,
                               objectFit: 'cover',
                               border: '1px solid var(--color-border)',
@@ -439,16 +497,24 @@ export const FoodItemsPage: React.FC = () => {
                             className="btn btn-secondary btn-sm"
                             style={{ padding: '2px 6px', fontSize: '0.7rem', height: 24, lineHeight: '1' }}
                             title="Decrease by 10"
-                            onClick={() => updateStock(food.id, Math.max(0, stockCount - 10))}
+                            disabled={isUpdatingThisStock || stockCount <= 0}
+                            onClick={() => handleUpdateStock(food.id, Math.max(0, stockCount - 10))}
                           >
                             -10
                           </button>
                           <span
+                            onClick={() => handleCustomStockPrompt(food)}
+                            title="Click to set exact stock"
                             style={{
-                              fontSize: '0.8125rem',
+                              fontSize: '0.85rem',
                               fontWeight: 700,
                               minWidth: 44,
                               textAlign: 'center',
+                              cursor: 'pointer',
+                              padding: '2px 6px',
+                              borderRadius: 4,
+                              backgroundColor: '#F9FAFB',
+                              border: '1px solid #E5E7EB',
                               color: isOut ? '#DC2626' : isLow ? '#D97706' : '#059669',
                             }}
                           >
@@ -459,30 +525,76 @@ export const FoodItemsPage: React.FC = () => {
                             className="btn btn-secondary btn-sm"
                             style={{ padding: '2px 6px', fontSize: '0.7rem', height: 24, lineHeight: '1' }}
                             title="Restock by 10"
-                            onClick={() => updateStock(food.id, stockCount + 10)}
+                            disabled={isUpdatingThisStock}
+                            onClick={() => handleUpdateStock(food.id, stockCount + 10)}
                           >
                             +10
                           </button>
                         </div>
-                        {isLow && (
-                          <div style={{ fontSize: '0.68rem', color: '#D97706', fontWeight: 700, marginTop: 2 }}>
-                            ⚠ Low Stock
-                          </div>
-                        )}
-                        {stockCount === 0 && (
-                          <div style={{ fontSize: '0.68rem', color: '#DC2626', fontWeight: 700, marginTop: 2 }}>
-                            ✕ Out of Stock
-                          </div>
+                      </td>
+
+                      {/* Stock Status Badge */}
+                      <td>
+                        {isOut ? (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              backgroundColor: '#FEE2E2',
+                              color: '#DC2626',
+                              padding: '3px 8px',
+                              borderRadius: 6,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}
+                          >
+                            Out of Stock
+                          </span>
+                        ) : isLow ? (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              backgroundColor: '#FEF3C7',
+                              color: '#D97706',
+                              padding: '3px 8px',
+                              borderRadius: 6,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}
+                          >
+                            Low Stock
+                          </span>
+                        ) : (
+                          <span
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 700,
+                              backgroundColor: '#D1FAE5',
+                              color: '#059669',
+                              padding: '3px 8px',
+                              borderRadius: 6,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4
+                            }}
+                          >
+                            In Stock
+                          </span>
                         )}
                       </td>
 
+                      {/* Availability Toggle */}
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <label className="toggle-switch">
                             <input
                               type="checkbox"
                               checked={food.isAvailable}
-                              onChange={() => toggleFoodAvailability(food.id)}
+                              disabled={isUpdatingThisAvail}
+                              onChange={() => handleToggleAvailability(food.id)}
                             />
                             <span className="toggle-slider" />
                           </label>
@@ -493,7 +605,7 @@ export const FoodItemsPage: React.FC = () => {
                               color: food.isAvailable ? '#059669' : '#9CA3AF'
                             }}
                           >
-                            {food.isAvailable ? 'In Stock' : 'Out'}
+                            {food.isAvailable ? 'Available' : 'Unavailable'}
                           </span>
                         </div>
                       </td>
@@ -503,12 +615,6 @@ export const FoodItemsPage: React.FC = () => {
                           <Clock size={14} color="var(--color-text-muted)" />
                           <span>{food.prepTime}</span>
                         </div>
-                      </td>
-
-                      <td>
-                        <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-                          {food.updatedAt}
-                        </span>
                       </td>
 
                       <td style={{ textAlign: 'right' }}>

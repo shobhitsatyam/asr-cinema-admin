@@ -3,25 +3,19 @@ import type {
   FoodItem,
   Category,
   Combo,
-  Seat,
   Order,
   Payment,
   Customer,
-  Coupon,
   SystemSettings,
-  OrderStatus,
-  SeatStatus,
-  AuditoriumName
+  OrderStatus
 } from '../types';
 
 import { initialFoods } from '../data/mockFoods';
 import { initialCategories } from '../data/mockCategories';
 import { initialCombos } from '../data/mockCombos';
-import { initialSeats } from '../data/mockSeats';
 import { initialOrders } from '../data/mockOrders';
 import { initialPayments } from '../data/mockPayments';
 import { initialCustomers } from '../data/mockCustomers';
-import { initialCoupons } from '../data/mockCoupons';
 import { initialSettings } from '../data/mockSettings';
 import { useToast } from './ToastContext';
 import {
@@ -43,15 +37,8 @@ import {
   updateCombo as updateComboApi,
   toggleComboAvailability as toggleComboAvailabilityApi,
   deleteCombo as deleteComboApi,
-  getSeats as fetchSeatsApi,
-  updateSeatStatus as updateSeatStatusApi,
   getPayments as fetchPaymentsApi,
   getCustomers as fetchCustomersApi,
-  getCoupons as fetchCouponsApi,
-  createCoupon as createCouponApi,
-  updateCoupon as updateCouponApi,
-  toggleCouponStatus as toggleCouponStatusApi,
-  deleteCoupon as deleteCouponApi,
   getSettings as fetchSettingsApi,
   updateSettings as updateSettingsApi,
 } from '../services/api';
@@ -79,16 +66,6 @@ interface AdminContextType {
   deleteCombo: (id: string) => Promise<void> | void;
   toggleComboAvailability: (id: string) => Promise<void> | void;
 
-  // Seats
-  seats: Seat[];
-  updateSeatStatus: (id: string, status: SeatStatus) => Promise<void> | void;
-  toggleSeatQR: (id: string) => void;
-  blockSeat: (id: string, reason?: string) => Promise<void> | void;
-  unblockSeat: (id: string) => Promise<void> | void;
-  regenerateSeatQR: (id: string) => void;
-  batchGenerateQR: (audi: AuditoriumName) => void;
-  refreshSeats: () => Promise<void>;
-
   // Orders
   orders: Order[];
   updateOrderStatus: (orderId: string, newStatus: OrderStatus) => Promise<void> | void;
@@ -102,13 +79,6 @@ interface AdminContextType {
   // Customers
   customers: Customer[];
   refreshCustomers: () => Promise<void>;
-
-  // Coupons
-  coupons: Coupon[];
-  addCoupon: (coupon: Omit<Coupon, 'id' | 'usedCount'>) => Promise<void> | void;
-  updateCoupon: (id: string, coupon: Partial<Coupon>) => Promise<void> | void;
-  deleteCoupon: (id: string) => Promise<void> | void;
-  toggleCouponStatus: (id: string) => Promise<void> | void;
 
   // Settings
   settings: SystemSettings;
@@ -135,13 +105,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [foods, setFoods] = useState<FoodItem[]>(() => loadFromStorage('foods', initialFoods));
   const [categories, setCategories] = useState<Category[]>(() => loadFromStorage('categories', initialCategories));
   const [combos, setCombos] = useState<Combo[]>(() => loadFromStorage('combos', initialCombos));
-  const [seats, setSeats] = useState<Seat[]>(() => {
-    const loaded = loadFromStorage<Seat[]>('seats', initialSeats);
-    if (!Array.isArray(loaded) || loaded.length < 50 || !loaded[0]?.type) {
-      return initialSeats;
-    }
-    return loaded;
-  });
   const [orders, setOrders] = useState<Order[]>(() => {
     const loaded = loadFromStorage<Order[]>('orders', initialOrders);
     const paidInitial = initialOrders.filter(o => o.paymentStatus === 'Paid');
@@ -152,7 +115,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
   const [payments, setPayments] = useState<Payment[]>(() => loadFromStorage('payments', initialPayments));
   const [customers, setCustomers] = useState<Customer[]>(() => loadFromStorage('customers', initialCustomers));
-  const [coupons, setCoupons] = useState<Coupon[]>(() => loadFromStorage('coupons', initialCoupons));
   const [settings, setSettings] = useState<SystemSettings>(() => loadFromStorage('settings', initialSettings));
 
   const [newOrderAlerts, setNewOrderAlerts] = useState<Order[]>([]);
@@ -264,7 +226,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, []);
 
-  // Reconcile catalog, combos, seats, payments, customers, coupons, settings from backend
+  // Reconcile catalog, combos, payments, customers, settings from backend
   useEffect(() => {
     let isMounted = true;
 
@@ -274,10 +236,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           backendProducts,
           backendCategories,
           backendCombos,
-          backendSeats,
           backendPayments,
           backendCustomers,
-          backendCoupons,
           backendSettings,
         ] = await Promise.all([
           fetchProductsApi().catch(err => {
@@ -292,20 +252,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             console.warn('Backend combos not loaded:', err.message);
             return null;
           }),
-          fetchSeatsApi().catch(err => {
-            console.warn('Backend seats not loaded:', err.message);
-            return null;
-          }),
           fetchPaymentsApi().catch(err => {
             console.warn('Backend payments not loaded:', err.message);
             return null;
           }),
           fetchCustomersApi().catch(err => {
             console.warn('Backend customers not loaded:', err.message);
-            return null;
-          }),
-          fetchCouponsApi().catch(err => {
-            console.warn('Backend coupons not loaded:', err.message);
             return null;
           }),
           fetchSettingsApi().catch(err => {
@@ -331,17 +283,11 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           if (Array.isArray(backendCombos) && backendCombos.length > 0) {
             setCombos(backendCombos);
           }
-          if (Array.isArray(backendSeats) && backendSeats.length > 0) {
-            setSeats(backendSeats);
-          }
           if (Array.isArray(backendPayments) && backendPayments.length > 0) {
             setPayments(backendPayments);
           }
           if (Array.isArray(backendCustomers) && backendCustomers.length > 0) {
             setCustomers(backendCustomers);
-          }
-          if (Array.isArray(backendCoupons) && backendCoupons.length > 0) {
-            setCoupons(backendCoupons);
           }
           if (backendSettings) {
             setSettings(backendSettings);
@@ -357,17 +303,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       isMounted = false;
     };
   }, []);
-
-  const refreshSeats = async () => {
-    try {
-      const realSeats = await fetchSeatsApi();
-      if (Array.isArray(realSeats) && realSeats.length > 0) {
-        setSeats(realSeats);
-      }
-    } catch (err) {
-      console.warn('Error refreshing seats:', err);
-    }
-  };
 
   const refreshPayments = async () => {
     try {
@@ -405,10 +340,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [combos]);
 
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'seats', JSON.stringify(seats)); } catch (e) { console.error(e); }
-  }, [seats]);
-
-  useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY_PREFIX + 'orders', JSON.stringify(orders)); } catch (e) { console.error(e); }
   }, [orders]);
 
@@ -419,10 +350,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY_PREFIX + 'customers', JSON.stringify(customers)); } catch (e) { console.error(e); }
   }, [customers]);
-
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'coupons', JSON.stringify(coupons)); } catch (e) { console.error(e); }
-  }, [coupons]);
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY_PREFIX + 'settings', JSON.stringify(settings)); } catch (e) { console.error(e); }
@@ -502,11 +429,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const target = foods.find(f => f.id === id);
     if (!target) return;
     const nextState = !target.isAvailable;
+    const currentStock = target.stock !== undefined ? target.stock : 100;
+
+    if (nextState && currentStock <= 0) {
+      showToast(
+        'Inventory Required',
+        `Cannot make "${target.name}" available because actual stock is 0. Please add inventory first.`,
+        'warning'
+      );
+      return;
+    }
+
     const prevFoods = foods;
 
     setFoods(prev =>
       prev.map(item =>
-        item.id === id ? { ...item, isAvailable: nextState, inStock: nextState, updatedAt: 'Just now' } : item
+        item.id === id ? { ...item, isAvailable: nextState, inStock: nextState && currentStock > 0, updatedAt: 'Just now' } : item
       )
     );
 
@@ -514,7 +452,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const updated = await toggleProductAvailabilityApi(id, nextState);
       setFoods(prev => prev.map(item => (item.id === id ? updated : item)));
       showToast(
-        nextState ? 'Item is now Available' : 'Item marked Out of Stock',
+        nextState ? 'Item is now Available' : 'Item marked Unavailable',
         target.name,
         nextState ? 'success' : 'warning'
       );
@@ -693,122 +631,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Seats handlers connected to backend
-  const updateSeatStatus = async (id: string, status: SeatStatus) => {
-    const seat = seats.find(s => s.id === id);
-    if (!seat) return;
-    const qrStatus = status === 'Blocked' ? 'Inactive' : seat.qrStatus;
-    const prevSeats = seats;
-
-    setSeats(prev =>
-      prev.map(s => (s.id === id ? { ...s, status, qrStatus } : s))
-    );
-
-    try {
-      await updateSeatStatusApi(id, status === 'Blocked' ? 'Blocked' : 'Available');
-      showToast(`Seat ${seat.seatNumber} Updated`, `Status changed to ${status}`);
-    } catch (err: unknown) {
-      setSeats(prevSeats);
-      const msg = err instanceof Error ? err.message : 'Failed to update seat status';
-      showToast('Seat Update Failed', msg, 'error');
-    }
-  };
-
-  const toggleSeatQR = (id: string) => {
-    const seat = seats.find(s => s.id === id);
-    if (!seat) return;
-    const next = seat.qrStatus === 'Active' ? 'Inactive' : 'Active';
-    setSeats(prev =>
-      prev.map(s => (s.id === id ? { ...s, qrStatus: next } : s))
-    );
-    showToast(
-      `Seat ${seat.seatNumber} QR ${next}`,
-      `Digital ordering is now ${next.toLowerCase()} for this seat.`
-    );
-  };
-
-  const blockSeat = async (id: string, reason?: string) => {
-    const seat = seats.find(s => s.id === id);
-    if (!seat) return;
-    const prevSeats = seats;
-
-    setSeats(prev =>
-      prev.map(s => (s.id === id ? { ...s, status: 'Blocked', qrStatus: 'Inactive' } : s))
-    );
-
-    try {
-      await updateSeatStatusApi(id, 'Blocked');
-      showToast(
-        `Seat ${seat.seatNumber} Blocked`,
-        reason ? `Reason: ${reason}` : `Seat blocked and digital ordering disabled.`,
-        'warning'
-      );
-    } catch (err: unknown) {
-      setSeats(prevSeats);
-      const msg = err instanceof Error ? err.message : 'Failed to block seat';
-      showToast('Block Failed', msg, 'error');
-    }
-  };
-
-  const unblockSeat = async (id: string) => {
-    const seat = seats.find(s => s.id === id);
-    if (!seat) return;
-    const prevSeats = seats;
-
-    setSeats(prev =>
-      prev.map(s => (s.id === id ? { ...s, status: 'Available', qrStatus: 'Active' } : s))
-    );
-
-    try {
-      await updateSeatStatusApi(id, 'Available');
-      showToast(
-        `Seat ${seat.seatNumber} Unblocked`,
-        `Seat restored to Available and QR ordering enabled.`,
-        'success'
-      );
-    } catch (err: unknown) {
-      setSeats(prevSeats);
-      const msg = err instanceof Error ? err.message : 'Failed to unblock seat';
-      showToast('Unblock Failed', msg, 'error');
-    }
-  };
-
-  const regenerateSeatQR = (id: string) => {
-    const seat = seats.find(s => s.id === id);
-    if (!seat) return;
-    // PRESERVE DEMO SEAT B16 token and URL!
-    const token = seat.isDemo || seat.seatNumber === 'B16' ? 'audi2-b16' : seat.token;
-    const qrUrl = seat.isDemo || seat.seatNumber === 'B16'
-      ? 'https://asr-cinema-scan-to-food.vercel.app/order/audi2-b16'
-      : seat.qrUrl;
-
-    setSeats(prev =>
-      prev.map(s => (s.id === id ? { ...s, token, qrUrl, qrStatus: 'Active' } : s))
-    );
-    showToast(
-      `QR Generated for ${seat.seatNumber}`,
-      `Token "${token}" verified and synchronized.`,
-      'success'
-    );
-  };
-
-  const batchGenerateQR = (audi: AuditoriumName) => {
-    setSeats(prev =>
-      prev.map(s => {
-        if (s.auditorium !== audi) return s;
-        return {
-          ...s,
-          qrStatus: s.status === 'Blocked' ? 'Inactive' : 'Active'
-        };
-      })
-    );
-    showToast(
-      `QR Batch Synced`,
-      `All active QR codes for ${audi} synchronized and verified.`,
-      'success'
-    );
-  };
-
   // Order status handler
   const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     const order = orders.find(o => o.id === orderId);
@@ -823,7 +645,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Store previous states for rollback if API fails
     const prevOrders = orders;
-    const prevSeats = seats;
 
     // Helper to compute updated timeline
     const getUpdatedTimeline = (ord: Order) => {
@@ -861,23 +682,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })
     );
 
-    // Sync seat status if applicable
-    setSeats(prev =>
-      prev.map(seat => {
-        if (seat.currentOrder && seat.currentOrder.orderId === orderId) {
-          return {
-            ...seat,
-            currentOrder: {
-              ...seat.currentOrder,
-              status: newStatus
-            },
-            status: newStatus === 'Completed' || newStatus === 'Cancelled' ? 'Available' : seat.status
-          };
-        }
-        return seat;
-      })
-    );
-
     try {
       isUpdatingOrderRef.current = true;
       const updatedBackendOrder = await updateOrderStatusApi(orderId, newStatus);
@@ -896,74 +700,9 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error(`Failed to update status for order ${orderId}:`, err);
       const msg = err instanceof Error ? err.message : 'Could not update order status on server. Please try again.';
       setOrders(prevOrders);
-      setSeats(prevSeats);
       showToast('Status Update Failed', msg, 'error');
     } finally {
       isUpdatingOrderRef.current = false;
-    }
-  };
-
-  // Coupon handlers connected to backend
-  const addCoupon = async (couponData: Omit<Coupon, 'id' | 'usedCount'>) => {
-    try {
-      const created = await createCouponApi(couponData);
-      setCoupons(prev => [created, ...prev]);
-      showToast('Coupon Created', `Code ${created.code} is now active.`);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to create coupon';
-      showToast('Creation Failed', msg, 'error');
-    }
-  };
-
-  const updateCoupon = async (id: string, updated: Partial<Coupon>) => {
-    const prevCoupons = coupons;
-    setCoupons(prev =>
-      prev.map(c => (c.id === id ? { ...c, ...updated } : c))
-    );
-    try {
-      const saved = await updateCouponApi(id, updated);
-      setCoupons(prev => prev.map(c => (c.id === id ? saved : c)));
-      showToast('Coupon Updated', 'Discount coupon settings saved.');
-    } catch (err: unknown) {
-      setCoupons(prevCoupons);
-      const msg = err instanceof Error ? err.message : 'Failed to update coupon';
-      showToast('Update Failed', msg, 'error');
-    }
-  };
-
-  const deleteCoupon = async (id: string) => {
-    const target = coupons.find(c => c.id === id);
-    if (!target) return;
-    const prevCoupons = coupons;
-    setCoupons(prev => prev.filter(c => c.id !== id));
-    try {
-      await deleteCouponApi(id);
-      showToast('Coupon Removed', `Code ${target.code} was deleted.`, 'info');
-    } catch (err: unknown) {
-      setCoupons(prevCoupons);
-      const msg = err instanceof Error ? err.message : 'Failed to delete coupon';
-      showToast('Delete Failed', msg, 'error');
-    }
-  };
-
-  const toggleCouponStatus = async (id: string) => {
-    const target = coupons.find(c => c.id === id);
-    if (!target) return;
-    const next = target.status === 'Active' ? 'Inactive' : 'Active';
-    const prevCoupons = coupons;
-
-    setCoupons(prev =>
-      prev.map(c => (c.id === id ? { ...c, status: next } : c))
-    );
-
-    try {
-      const updated = await toggleCouponStatusApi(id);
-      setCoupons(prev => prev.map(c => (c.id === id ? updated : c)));
-      showToast(`Coupon ${target.code}`, `Coupon marked as ${updated.status}.`);
-    } catch (err: unknown) {
-      setCoupons(prevCoupons);
-      const msg = err instanceof Error ? err.message : 'Failed to toggle coupon';
-      showToast('Action Failed', msg, 'error');
     }
   };
 
@@ -1002,15 +741,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteCombo,
         toggleComboAvailability,
 
-        seats,
-        updateSeatStatus,
-        toggleSeatQR,
-        blockSeat,
-        unblockSeat,
-        regenerateSeatQR,
-        batchGenerateQR,
-        refreshSeats,
-
         orders,
         updateOrderStatus,
         newOrderAlerts,
@@ -1021,12 +751,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         customers,
         refreshCustomers,
-
-        coupons,
-        addCoupon,
-        updateCoupon,
-        deleteCoupon,
-        toggleCouponStatus,
 
         settings,
         updateSettings,

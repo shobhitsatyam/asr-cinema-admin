@@ -4,10 +4,8 @@ import type {
   FoodItem,
   Category,
   Combo,
-  Seat,
   Payment,
   Customer,
-  Coupon,
   SystemSettings,
   AdminUser,
 } from '../types';
@@ -636,74 +634,6 @@ export async function deleteCombo(id: string): Promise<{ success: boolean; messa
 }
 
 // ----------------------------------------------------
-// SEATS APIS
-// ----------------------------------------------------
-
-export async function getSeats(auditorium?: string): Promise<Seat[]> {
-  const url = auditorium
-    ? `${API_BASE_URL}/seats/admin?auditorium=${encodeURIComponent(auditorium)}`
-    : `${API_BASE_URL}/seats/admin`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    cache: 'no-store',
-    headers: getAdminHeaders(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch seats: HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  const rawSeats = data.seats || [];
-
-  return rawSeats.map((s: Record<string, unknown>) => {
-    const status = s.status === 'inactive' ? 'Blocked' : 'Available';
-    const row = String(s.row || '');
-    const number = Number(s.number || 1);
-    const audi = (s.auditoriumName || s.auditorium || 'Audi 1') as Seat['auditorium'];
-    const section = String(s.section || 'Platinum');
-    const type: Seat['type'] = section.toLowerCase().includes('recliner')
-      ? 'Premium Recliner'
-      : section.toLowerCase().includes('gold')
-        ? 'Premium Gold'
-        : section.toLowerCase().includes('lounger')
-          ? 'Premium Lounger'
-          : 'Premium Platinum';
-
-    return {
-      id: String(s._id || s.id || s.token || ''),
-      seatNumber: String(s.seatNumber || `${row}${number}`),
-      auditorium: audi,
-      row,
-      number,
-      type,
-      price: Number(s.price || 350),
-      status,
-      qrStatus: (s.status === 'inactive' ? 'Inactive' : 'Active') as 'Active' | 'Inactive',
-      token: String(s.token || ''),
-      qrUrl: `https://asr-cinema-scan-to-food.vercel.app/order/${s.token}`,
-      isDemo: Boolean(s.isDemo),
-    };
-  });
-}
-
-export async function updateSeatStatus(seatId: string, status: 'Available' | 'Blocked'): Promise<void> {
-  const backendStatus = status === 'Blocked' ? 'inactive' : 'active';
-  const encodedId = encodeURIComponent(seatId);
-  const response = await fetch(`${API_BASE_URL}/seats/${encodedId}/status`, {
-    method: 'PATCH',
-    headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify({ status: backendStatus }),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to update seat status: HTTP ${response.status}`);
-  }
-}
-
-// ----------------------------------------------------
 // PAYMENTS APIS
 // ----------------------------------------------------
 
@@ -739,89 +669,6 @@ export async function getCustomers(): Promise<Customer[]> {
 
   const data = await response.json();
   return data.customers || [];
-}
-
-// ----------------------------------------------------
-// COUPONS APIS
-// ----------------------------------------------------
-
-export async function getCoupons(): Promise<Coupon[]> {
-  const response = await fetch(`${API_BASE_URL}/coupons`, {
-    method: 'GET',
-    cache: 'no-store',
-    headers: getAdminHeaders(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch coupons: HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.coupons || [];
-}
-
-export async function createCoupon(coupon: Omit<Coupon, 'id' | 'usedCount'>): Promise<Coupon> {
-  const response = await fetch(`${API_BASE_URL}/coupons`, {
-    method: 'POST',
-    headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(coupon),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to create coupon: HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.coupon;
-}
-
-export async function updateCoupon(id: string, updates: Partial<Coupon>): Promise<Coupon> {
-  const encodedId = encodeURIComponent(id);
-  const response = await fetch(`${API_BASE_URL}/coupons/${encodedId}`, {
-    method: 'PUT',
-    headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(updates),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to update coupon: HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.coupon;
-}
-
-export async function toggleCouponStatus(id: string): Promise<Coupon> {
-  const encodedId = encodeURIComponent(id);
-  const response = await fetch(`${API_BASE_URL}/coupons/${encodedId}/status`, {
-    method: 'PATCH',
-    headers: getAdminHeaders(),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to toggle coupon status: HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.coupon;
-}
-
-export async function deleteCoupon(id: string): Promise<{ success: boolean; message: string }> {
-  const encodedId = encodeURIComponent(id);
-  const response = await fetch(`${API_BASE_URL}/coupons/${encodedId}`, {
-    method: 'DELETE',
-    headers: getAdminHeaders(),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to delete coupon: HTTP ${response.status}`);
-  }
-
-  return await response.json();
 }
 
 // ----------------------------------------------------
