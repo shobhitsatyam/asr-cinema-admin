@@ -32,11 +32,28 @@ import {
   updateProduct as updateProductApi,
   toggleProductAvailability as toggleProductAvailabilityApi,
   deleteProduct as deleteProductApi,
+  updateProductStock as updateProductStockApi,
   getCategories as fetchCategoriesApi,
   createCategory as createCategoryApi,
   updateCategory as updateCategoryApi,
   toggleCategoryStatus as toggleCategoryStatusApi,
   deleteCategory as deleteCategoryApi,
+  getCombos as fetchCombosApi,
+  createCombo as createComboApi,
+  updateCombo as updateComboApi,
+  toggleComboAvailability as toggleComboAvailabilityApi,
+  deleteCombo as deleteComboApi,
+  getSeats as fetchSeatsApi,
+  updateSeatStatus as updateSeatStatusApi,
+  getPayments as fetchPaymentsApi,
+  getCustomers as fetchCustomersApi,
+  getCoupons as fetchCouponsApi,
+  createCoupon as createCouponApi,
+  updateCoupon as updateCouponApi,
+  toggleCouponStatus as toggleCouponStatusApi,
+  deleteCoupon as deleteCouponApi,
+  getSettings as fetchSettingsApi,
+  updateSettings as updateSettingsApi,
 } from '../services/api';
 
 interface AdminContextType {
@@ -46,6 +63,7 @@ interface AdminContextType {
   updateFood: (id: string, food: Partial<FoodItem>) => Promise<void> | void;
   deleteFood: (id: string) => Promise<void> | void;
   toggleFoodAvailability: (id: string) => Promise<void> | void;
+  updateStock: (id: string, stock: number, inStock?: boolean) => Promise<void> | void;
 
   // Categories
   categories: Category[];
@@ -56,19 +74,20 @@ interface AdminContextType {
 
   // Combos
   combos: Combo[];
-  addCombo: (combo: Omit<Combo, 'id'>) => void;
-  updateCombo: (id: string, combo: Partial<Combo>) => void;
-  deleteCombo: (id: string) => void;
-  toggleComboAvailability: (id: string) => void;
+  addCombo: (combo: Omit<Combo, 'id'>) => Promise<void> | void;
+  updateCombo: (id: string, combo: Partial<Combo>) => Promise<void> | void;
+  deleteCombo: (id: string) => Promise<void> | void;
+  toggleComboAvailability: (id: string) => Promise<void> | void;
 
   // Seats
   seats: Seat[];
-  updateSeatStatus: (id: string, status: SeatStatus) => void;
+  updateSeatStatus: (id: string, status: SeatStatus) => Promise<void> | void;
   toggleSeatQR: (id: string) => void;
-  blockSeat: (id: string, reason?: string) => void;
-  unblockSeat: (id: string) => void;
+  blockSeat: (id: string, reason?: string) => Promise<void> | void;
+  unblockSeat: (id: string) => Promise<void> | void;
   regenerateSeatQR: (id: string) => void;
   batchGenerateQR: (audi: AuditoriumName) => void;
+  refreshSeats: () => Promise<void>;
 
   // Orders
   orders: Order[];
@@ -78,20 +97,22 @@ interface AdminContextType {
 
   // Payments
   payments: Payment[];
+  refreshPayments: () => Promise<void>;
 
   // Customers
   customers: Customer[];
+  refreshCustomers: () => Promise<void>;
 
   // Coupons
   coupons: Coupon[];
-  addCoupon: (coupon: Omit<Coupon, 'id' | 'usedCount'>) => void;
-  updateCoupon: (id: string, coupon: Partial<Coupon>) => void;
-  deleteCoupon: (id: string) => void;
-  toggleCouponStatus: (id: string) => void;
+  addCoupon: (coupon: Omit<Coupon, 'id' | 'usedCount'>) => Promise<void> | void;
+  updateCoupon: (id: string, coupon: Partial<Coupon>) => Promise<void> | void;
+  deleteCoupon: (id: string) => Promise<void> | void;
+  toggleCouponStatus: (id: string) => Promise<void> | void;
 
   // Settings
   settings: SystemSettings;
-  updateSettings: (newSettings: Partial<SystemSettings>) => void;
+  updateSettings: (newSettings: Partial<SystemSettings>) => Promise<void> | void;
 }
 
 const AdminContext = createContext<AdminContextType | undefined>(undefined);
@@ -129,8 +150,8 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     return loaded.filter(o => o.paymentStatus === 'Paid');
   });
-  const [payments] = useState<Payment[]>(() => loadFromStorage('payments', initialPayments));
-  const [customers] = useState<Customer[]>(() => loadFromStorage('customers', initialCustomers));
+  const [payments, setPayments] = useState<Payment[]>(() => loadFromStorage('payments', initialPayments));
+  const [customers, setCustomers] = useState<Customer[]>(() => loadFromStorage('customers', initialCustomers));
   const [coupons, setCoupons] = useState<Coupon[]>(() => loadFromStorage('coupons', initialCoupons));
   const [settings, setSettings] = useState<SystemSettings>(() => loadFromStorage('settings', initialSettings));
 
@@ -195,12 +216,12 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             backoffUntilRef.current = Date.now() + 15000;
             console.warn('Backend rate limit reached (HTTP 429), pausing polling for 15s.');
           } else if (is401) {
-            console.warn('Backend orders polling rejected: HTTP 401 Unauthorized (x-admin-key missing or invalid).');
+            console.warn('Backend orders polling rejected: HTTP 401 Unauthorized.');
             if (lastPollingAlertRef.current !== '401') {
               lastPollingAlertRef.current = '401';
               showToast(
                 'Authentication Required',
-                'Backend returned HTTP 401. Please configure your Admin Authorization Key in Settings > Admin Profile.',
+                'Backend session required. Please sign in to terminal.',
                 'warning'
               );
             }
@@ -229,7 +250,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     loadOrders();
     const intervalId = setInterval(loadOrders, 4000);
 
-    // Immediately fetch fresh orders when tab becomes active again
     const handleVisibilityChange = () => {
       if (!document.hidden) {
         loadOrders();
@@ -244,13 +264,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, []);
 
-  // Reconcile catalog from MongoDB backend on mount (Server is authoritative source of truth)
+  // Reconcile catalog, combos, seats, payments, customers, coupons, settings from backend
   useEffect(() => {
     let isMounted = true;
 
-    const loadCatalog = async () => {
+    const loadInitialData = async () => {
       try {
-        const [backendProducts, backendCategories] = await Promise.all([
+        const [
+          backendProducts,
+          backendCategories,
+          backendCombos,
+          backendSeats,
+          backendPayments,
+          backendCustomers,
+          backendCoupons,
+          backendSettings,
+        ] = await Promise.all([
           fetchProductsApi().catch(err => {
             console.warn('Backend products not loaded:', err.message);
             return null;
@@ -259,14 +288,38 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             console.warn('Backend categories not loaded:', err.message);
             return null;
           }),
+          fetchCombosApi().catch(err => {
+            console.warn('Backend combos not loaded:', err.message);
+            return null;
+          }),
+          fetchSeatsApi().catch(err => {
+            console.warn('Backend seats not loaded:', err.message);
+            return null;
+          }),
+          fetchPaymentsApi().catch(err => {
+            console.warn('Backend payments not loaded:', err.message);
+            return null;
+          }),
+          fetchCustomersApi().catch(err => {
+            console.warn('Backend customers not loaded:', err.message);
+            return null;
+          }),
+          fetchCouponsApi().catch(err => {
+            console.warn('Backend coupons not loaded:', err.message);
+            return null;
+          }),
+          fetchSettingsApi().catch(err => {
+            console.warn('Backend settings not loaded:', err.message);
+            return null;
+          }),
         ]);
 
         if (isMounted) {
-          if (Array.isArray(backendProducts)) {
+          if (Array.isArray(backendProducts) && backendProducts.length > 0) {
             setFoods(backendProducts);
           }
-          if (Array.isArray(backendCategories)) {
-            const currentProds = Array.isArray(backendProducts) ? backendProducts : foods;
+          if (Array.isArray(backendCategories) && backendCategories.length > 0) {
+            const currentProds = Array.isArray(backendProducts) && backendProducts.length > 0 ? backendProducts : foods;
             const reconciledCategories = backendCategories.map(cat => ({
               ...cat,
               itemCount: currentProds.filter(
@@ -275,59 +328,104 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             }));
             setCategories(reconciledCategories);
           }
+          if (Array.isArray(backendCombos) && backendCombos.length > 0) {
+            setCombos(backendCombos);
+          }
+          if (Array.isArray(backendSeats) && backendSeats.length > 0) {
+            setSeats(backendSeats);
+          }
+          if (Array.isArray(backendPayments) && backendPayments.length > 0) {
+            setPayments(backendPayments);
+          }
+          if (Array.isArray(backendCustomers) && backendCustomers.length > 0) {
+            setCustomers(backendCustomers);
+          }
+          if (Array.isArray(backendCoupons) && backendCoupons.length > 0) {
+            setCoupons(backendCoupons);
+          }
+          if (backendSettings) {
+            setSettings(backendSettings);
+          }
         }
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.warn('Catalog sync error:', msg);
+        console.warn('Initial data sync error:', err);
       }
     };
 
-    loadCatalog();
+    loadInitialData();
     return () => {
       isMounted = false;
     };
   }, []);
 
-  useEffect(() => {
+  const refreshSeats = async () => {
     try {
-      localStorage.setItem(STORAGE_KEY_PREFIX + 'foods', JSON.stringify(foods));
-    } catch (e) { console.error(e); }
+      const realSeats = await fetchSeatsApi();
+      if (Array.isArray(realSeats) && realSeats.length > 0) {
+        setSeats(realSeats);
+      }
+    } catch (err) {
+      console.warn('Error refreshing seats:', err);
+    }
+  };
+
+  const refreshPayments = async () => {
+    try {
+      const realPayments = await fetchPaymentsApi();
+      if (Array.isArray(realPayments)) {
+        setPayments(realPayments);
+      }
+    } catch (err) {
+      console.warn('Error refreshing payments:', err);
+    }
+  };
+
+  const refreshCustomers = async () => {
+    try {
+      const realCustomers = await fetchCustomersApi();
+      if (Array.isArray(realCustomers)) {
+        setCustomers(realCustomers);
+      }
+    } catch (err) {
+      console.warn('Error refreshing customers:', err);
+    }
+  };
+
+  // Local storage synchronization
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'foods', JSON.stringify(foods)); } catch (e) { console.error(e); }
   }, [foods]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PREFIX + 'categories', JSON.stringify(categories));
-    } catch (e) { console.error(e); }
+    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'categories', JSON.stringify(categories)); } catch (e) { console.error(e); }
   }, [categories]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PREFIX + 'combos', JSON.stringify(combos));
-    } catch (e) { console.error(e); }
+    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'combos', JSON.stringify(combos)); } catch (e) { console.error(e); }
   }, [combos]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PREFIX + 'seats', JSON.stringify(seats));
-    } catch (e) { console.error(e); }
+    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'seats', JSON.stringify(seats)); } catch (e) { console.error(e); }
   }, [seats]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PREFIX + 'orders', JSON.stringify(orders));
-    } catch (e) { console.error(e); }
+    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'orders', JSON.stringify(orders)); } catch (e) { console.error(e); }
   }, [orders]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PREFIX + 'coupons', JSON.stringify(coupons));
-    } catch (e) { console.error(e); }
+    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'payments', JSON.stringify(payments)); } catch (e) { console.error(e); }
+  }, [payments]);
+
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'customers', JSON.stringify(customers)); } catch (e) { console.error(e); }
+  }, [customers]);
+
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'coupons', JSON.stringify(coupons)); } catch (e) { console.error(e); }
   }, [coupons]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY_PREFIX + 'settings', JSON.stringify(settings));
-    } catch (e) { console.error(e); }
+    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'settings', JSON.stringify(settings)); } catch (e) { console.error(e); }
   }, [settings]);
 
   // Food handlers connected to backend MongoDB API
@@ -350,19 +448,19 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  const updateFood = async (id: string, updatedFields: Partial<FoodItem>) => {
+  const updateFood = async (id: string, updated: Partial<FoodItem>) => {
     const prevFoods = foods;
     setFoods(prev =>
       prev.map(item =>
-        item.id === id ? { ...item, ...updatedFields, updatedAt: 'Just now' } : item
+        item.id === id ? { ...item, ...updated, updatedAt: 'Just now' } : item
       )
     );
     try {
-      const updated = await updateProductApi(id, updatedFields);
-      setFoods(prev => prev.map(item => (item.id === id ? updated : item)));
-      showToast('Food Item Updated', 'Changes persisted to database.');
+      const saved = await updateProductApi(id, updated);
+      setFoods(prev => prev.map(item => (item.id === id ? saved : item)));
+      showToast('Food Updated', 'Changes saved to database.');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not update item on server.';
+      const msg = err instanceof Error ? err.message : 'Could not update food item.';
       console.error(`Failed to update food ${id}:`, err);
       setFoods(prevFoods);
       showToast('Update Failed', msg, 'error');
@@ -378,15 +476,22 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const result = await deleteProductApi(id);
       if (result.deactivated) {
         setFoods(prev =>
-          prev.map(item => (item.id === id ? { ...item, isAvailable: false } : item))
+          prev.map(f => (f.id === id ? { ...f, isAvailable: false, inStock: false } : f))
         );
         showToast('Item Deactivated', result.message, 'warning');
       } else {
         setFoods(prev => prev.filter(f => f.id !== id));
-        showToast('Item Deleted', `${target.name} removed from catalog.`, 'info');
+        setCategories(prev =>
+          prev.map(cat =>
+            cat.name.toLowerCase() === target.category.toLowerCase()
+              ? { ...cat, itemCount: Math.max(0, cat.itemCount - 1) }
+              : cat
+          )
+        );
+        showToast('Food Deleted', `${target.name} removed from catalog.`, 'info');
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not delete item.';
+      const msg = err instanceof Error ? err.message : 'Could not delete food item.';
       console.error(`Failed to delete food ${id}:`, err);
       setFoods(prevFoods);
       showToast('Delete Failed', msg, 'error');
@@ -401,7 +506,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     setFoods(prev =>
       prev.map(item =>
-        item.id === id ? { ...item, isAvailable: nextState, updatedAt: 'Just now' } : item
+        item.id === id ? { ...item, isAvailable: nextState, inStock: nextState, updatedAt: 'Just now' } : item
       )
     );
 
@@ -418,6 +523,27 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       console.error(`Failed to toggle availability for ${id}:`, err);
       setFoods(prevFoods);
       showToast('Action Failed', msg, 'error');
+    }
+  };
+
+  const updateStock = async (id: string, newStock: number, inStock?: boolean) => {
+    const prevFoods = foods;
+    const calculatedInStock = inStock !== undefined ? inStock : newStock > 0;
+    setFoods(prev =>
+      prev.map(item =>
+        item.id === id ? { ...item, stock: newStock, inStock: calculatedInStock, isAvailable: calculatedInStock } : item
+      )
+    );
+
+    try {
+      const updated = await updateProductStockApi(id, newStock, calculatedInStock);
+      setFoods(prev => prev.map(item => (item.id === id ? updated : item)));
+      showToast('Stock Updated', `${updated.name}: ${newStock} units remaining.`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not update stock level.';
+      console.error(`Failed to update stock for ${id}:`, err);
+      setFoods(prevFoods);
+      showToast('Stock Update Failed', msg, 'error');
     }
   };
 
@@ -501,51 +627,91 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Combo handlers
-  const addCombo = (comboData: Omit<Combo, 'id'>) => {
-    const id = 'combo-' + Date.now();
-    const newCombo: Combo = { ...comboData, id };
-    setCombos(prev => [newCombo, ...prev]);
-    showToast('Combo Created', `${newCombo.name} added to menu.`);
+  // Combo handlers connected to backend API
+  const addCombo = async (comboData: Omit<Combo, 'id'>) => {
+    try {
+      const created = await createComboApi(comboData);
+      setCombos(prev => [created, ...prev]);
+      showToast('Combo Created', `${created.name} added to menu.`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to create combo';
+      showToast('Creation Failed', msg, 'error');
+    }
   };
 
-  const updateCombo = (id: string, updated: Partial<Combo>) => {
+  const updateCombo = async (id: string, updated: Partial<Combo>) => {
+    const prevCombos = combos;
     setCombos(prev =>
       prev.map(c => (c.id === id ? { ...c, ...updated } : c))
     );
-    showToast('Combo Updated', 'Combo details saved.');
+    try {
+      const saved = await updateComboApi(id, updated);
+      setCombos(prev => prev.map(c => (c.id === id ? saved : c)));
+      showToast('Combo Updated', 'Combo details saved.');
+    } catch (err: unknown) {
+      setCombos(prevCombos);
+      const msg = err instanceof Error ? err.message : 'Failed to update combo';
+      showToast('Update Failed', msg, 'error');
+    }
   };
 
-  const deleteCombo = (id: string) => {
+  const deleteCombo = async (id: string) => {
     const target = combos.find(c => c.id === id);
     if (!target) return;
+    const prevCombos = combos;
     setCombos(prev => prev.filter(c => c.id !== id));
-    showToast('Combo Deleted', `${target.name} removed.`, 'info');
+    try {
+      await deleteComboApi(id);
+      showToast('Combo Deleted', `${target.name} removed.`, 'info');
+    } catch (err: unknown) {
+      setCombos(prevCombos);
+      const msg = err instanceof Error ? err.message : 'Failed to delete combo';
+      showToast('Delete Failed', msg, 'error');
+    }
   };
 
-  const toggleComboAvailability = (id: string) => {
+  const toggleComboAvailability = async (id: string) => {
     const target = combos.find(c => c.id === id);
     if (!target) return;
     const next = !target.isAvailable;
+    const prevCombos = combos;
     setCombos(prev =>
       prev.map(c => (c.id === id ? { ...c, isAvailable: next } : c))
     );
-    showToast(
-      next ? 'Combo Activated' : 'Combo Marked Unavailable',
-      target.name,
-      next ? 'success' : 'warning'
-    );
+    try {
+      const updated = await toggleComboAvailabilityApi(id);
+      setCombos(prev => prev.map(c => (c.id === id ? updated : c)));
+      showToast(
+        next ? 'Combo Activated' : 'Combo Marked Unavailable',
+        target.name,
+        next ? 'success' : 'warning'
+      );
+    } catch (err: unknown) {
+      setCombos(prevCombos);
+      const msg = err instanceof Error ? err.message : 'Failed to toggle combo';
+      showToast('Action Failed', msg, 'error');
+    }
   };
 
-  // Seats handlers
-  const updateSeatStatus = (id: string, status: SeatStatus) => {
+  // Seats handlers connected to backend
+  const updateSeatStatus = async (id: string, status: SeatStatus) => {
     const seat = seats.find(s => s.id === id);
     if (!seat) return;
     const qrStatus = status === 'Blocked' ? 'Inactive' : seat.qrStatus;
+    const prevSeats = seats;
+
     setSeats(prev =>
       prev.map(s => (s.id === id ? { ...s, status, qrStatus } : s))
     );
-    showToast(`Seat ${seat.seatNumber} Updated`, `Status changed to ${status}`);
+
+    try {
+      await updateSeatStatusApi(id, status === 'Blocked' ? 'Blocked' : 'Available');
+      showToast(`Seat ${seat.seatNumber} Updated`, `Status changed to ${status}`);
+    } catch (err: unknown) {
+      setSeats(prevSeats);
+      const msg = err instanceof Error ? err.message : 'Failed to update seat status';
+      showToast('Seat Update Failed', msg, 'error');
+    }
   };
 
   const toggleSeatQR = (id: string) => {
@@ -561,30 +727,50 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
   };
 
-  const blockSeat = (id: string, reason?: string) => {
+  const blockSeat = async (id: string, reason?: string) => {
     const seat = seats.find(s => s.id === id);
     if (!seat) return;
+    const prevSeats = seats;
+
     setSeats(prev =>
       prev.map(s => (s.id === id ? { ...s, status: 'Blocked', qrStatus: 'Inactive' } : s))
     );
-    showToast(
-      `Seat ${seat.seatNumber} Blocked`,
-      reason ? `Reason: ${reason}` : `Seat blocked and digital ordering disabled.`,
-      'warning'
-    );
+
+    try {
+      await updateSeatStatusApi(id, 'Blocked');
+      showToast(
+        `Seat ${seat.seatNumber} Blocked`,
+        reason ? `Reason: ${reason}` : `Seat blocked and digital ordering disabled.`,
+        'warning'
+      );
+    } catch (err: unknown) {
+      setSeats(prevSeats);
+      const msg = err instanceof Error ? err.message : 'Failed to block seat';
+      showToast('Block Failed', msg, 'error');
+    }
   };
 
-  const unblockSeat = (id: string) => {
+  const unblockSeat = async (id: string) => {
     const seat = seats.find(s => s.id === id);
     if (!seat) return;
+    const prevSeats = seats;
+
     setSeats(prev =>
       prev.map(s => (s.id === id ? { ...s, status: 'Available', qrStatus: 'Active' } : s))
     );
-    showToast(
-      `Seat ${seat.seatNumber} Unblocked`,
-      `Seat restored to Available and QR ordering enabled.`,
-      'success'
-    );
+
+    try {
+      await updateSeatStatusApi(id, 'Available');
+      showToast(
+        `Seat ${seat.seatNumber} Unblocked`,
+        `Seat restored to Available and QR ordering enabled.`,
+        'success'
+      );
+    } catch (err: unknown) {
+      setSeats(prevSeats);
+      const msg = err instanceof Error ? err.message : 'Failed to unblock seat';
+      showToast('Unblock Failed', msg, 'error');
+    }
   };
 
   const regenerateSeatQR = (id: string) => {
@@ -695,7 +881,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       isUpdatingOrderRef.current = true;
       const updatedBackendOrder = await updateOrderStatusApi(orderId, newStatus);
-      // Synchronize with returned backend order
       if (updatedBackendOrder) {
         setOrders(prev =>
           prev.map(ord => (ord.id === orderId ? { ...ord, ...updatedBackendOrder } : ord))
@@ -710,59 +895,89 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (err: unknown) {
       console.error(`Failed to update status for order ${orderId}:`, err);
       const msg = err instanceof Error ? err.message : 'Could not update order status on server. Please try again.';
-      // Restore previous state so we do not falsely show the status as saved
       setOrders(prevOrders);
       setSeats(prevSeats);
-      showToast(
-        'Status Update Failed',
-        msg,
-        'error'
-      );
+      showToast('Status Update Failed', msg, 'error');
     } finally {
       isUpdatingOrderRef.current = false;
     }
   };
 
-  // Coupon handlers
-  const addCoupon = (couponData: Omit<Coupon, 'id' | 'usedCount'>) => {
-    const id = 'coupon-' + Date.now();
-    const newCoupon: Coupon = {
-      ...couponData,
-      id,
-      usedCount: 0
-    };
-    setCoupons(prev => [newCoupon, ...prev]);
-    showToast('Coupon Created', `Code ${newCoupon.code} is now active.`);
+  // Coupon handlers connected to backend
+  const addCoupon = async (couponData: Omit<Coupon, 'id' | 'usedCount'>) => {
+    try {
+      const created = await createCouponApi(couponData);
+      setCoupons(prev => [created, ...prev]);
+      showToast('Coupon Created', `Code ${created.code} is now active.`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to create coupon';
+      showToast('Creation Failed', msg, 'error');
+    }
   };
 
-  const updateCoupon = (id: string, updated: Partial<Coupon>) => {
+  const updateCoupon = async (id: string, updated: Partial<Coupon>) => {
+    const prevCoupons = coupons;
     setCoupons(prev =>
       prev.map(c => (c.id === id ? { ...c, ...updated } : c))
     );
-    showToast('Coupon Updated', 'Discount coupon settings saved.');
+    try {
+      const saved = await updateCouponApi(id, updated);
+      setCoupons(prev => prev.map(c => (c.id === id ? saved : c)));
+      showToast('Coupon Updated', 'Discount coupon settings saved.');
+    } catch (err: unknown) {
+      setCoupons(prevCoupons);
+      const msg = err instanceof Error ? err.message : 'Failed to update coupon';
+      showToast('Update Failed', msg, 'error');
+    }
   };
 
-  const deleteCoupon = (id: string) => {
+  const deleteCoupon = async (id: string) => {
     const target = coupons.find(c => c.id === id);
     if (!target) return;
+    const prevCoupons = coupons;
     setCoupons(prev => prev.filter(c => c.id !== id));
-    showToast('Coupon Removed', `Code ${target.code} was deleted.`, 'info');
+    try {
+      await deleteCouponApi(id);
+      showToast('Coupon Removed', `Code ${target.code} was deleted.`, 'info');
+    } catch (err: unknown) {
+      setCoupons(prevCoupons);
+      const msg = err instanceof Error ? err.message : 'Failed to delete coupon';
+      showToast('Delete Failed', msg, 'error');
+    }
   };
 
-  const toggleCouponStatus = (id: string) => {
+  const toggleCouponStatus = async (id: string) => {
     const target = coupons.find(c => c.id === id);
     if (!target) return;
     const next = target.status === 'Active' ? 'Inactive' : 'Active';
+    const prevCoupons = coupons;
+
     setCoupons(prev =>
       prev.map(c => (c.id === id ? { ...c, status: next } : c))
     );
-    showToast(`Coupon ${target.code}`, `Coupon marked as ${next}.`);
+
+    try {
+      const updated = await toggleCouponStatusApi(id);
+      setCoupons(prev => prev.map(c => (c.id === id ? updated : c)));
+      showToast(`Coupon ${target.code}`, `Coupon marked as ${updated.status}.`);
+    } catch (err: unknown) {
+      setCoupons(prevCoupons);
+      const msg = err instanceof Error ? err.message : 'Failed to toggle coupon';
+      showToast('Action Failed', msg, 'error');
+    }
   };
 
-  // Settings handlers
-  const updateSettings = (newSettings: Partial<SystemSettings>) => {
-    setSettings(prev => ({ ...prev, ...newSettings }));
-    showToast('Settings Saved', 'System configurations updated successfully.');
+  // Settings handlers connected to backend
+  const updateSettings = async (newSettings: Partial<SystemSettings>) => {
+    const merged = { ...settings, ...newSettings } as SystemSettings;
+    setSettings(merged);
+    try {
+      await updateSettingsApi(merged);
+      showToast('Settings Saved', 'System configurations updated successfully.');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update settings';
+      showToast('Save Failed', msg, 'error');
+    }
   };
 
   return (
@@ -773,6 +988,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateFood,
         deleteFood,
         toggleFoodAvailability,
+        updateStock,
 
         categories,
         addCategory,
@@ -793,6 +1009,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         unblockSeat,
         regenerateSeatQR,
         batchGenerateQR,
+        refreshSeats,
 
         orders,
         updateOrderStatus,
@@ -800,7 +1017,10 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         dismissNewOrderAlert,
 
         payments,
+        refreshPayments,
+
         customers,
+        refreshCustomers,
 
         coupons,
         addCoupon,
@@ -809,7 +1029,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         toggleCouponStatus,
 
         settings,
-        updateSettings
+        updateSettings,
       }}
     >
       {children}

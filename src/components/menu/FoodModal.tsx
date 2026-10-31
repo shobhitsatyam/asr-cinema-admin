@@ -31,6 +31,7 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
   const [description, setDescription] = useState('');
   const [image, setImage] = useState(sampleImages[0].url);
   const [isAvailable, setIsAvailable] = useState(true);
+  const [stock, setStock] = useState<number>(100);
 
   // Populate data when editing
   useEffect(() => {
@@ -44,6 +45,7 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
       setDescription(foodToEdit.description);
       setImage(foodToEdit.image);
       setIsAvailable(foodToEdit.isAvailable);
+      setStock(foodToEdit.stock !== undefined ? foodToEdit.stock : 100);
     } else {
       setName('');
       setCategory(categories[0]?.name || 'Popcorn');
@@ -54,6 +56,7 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
       setDescription('');
       setImage(sampleImages[0].url);
       setIsAvailable(true);
+      setStock(100);
     }
   }, [foodToEdit, categories, isOpen]);
 
@@ -71,7 +74,9 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
         prepTime,
         description,
         image,
-        isAvailable
+        isAvailable,
+        stock: Number(stock),
+        inStock: Number(stock) > 0 && isAvailable,
       });
     } else {
       addFood({
@@ -83,7 +88,9 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
         prepTime,
         description,
         image,
-        isAvailable
+        isAvailable,
+        stock: Number(stock),
+        inStock: Number(stock) > 0 && isAvailable,
       });
     }
 
@@ -217,8 +224,8 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
           </div>
         </div>
 
-        {/* Prep Time & Availability */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        {/* Prep Time & Stock & Availability */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 14 }}>
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label className="form-label">Preparation Time</label>
             <input
@@ -231,7 +238,19 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
           </div>
 
           <div className="form-group" style={{ marginBottom: 0 }}>
-            <label className="form-label">Initial Availability</label>
+            <label className="form-label">Stock Quantity</label>
+            <input
+              type="number"
+              className="form-input"
+              min={0}
+              value={stock}
+              onChange={e => setStock(Math.max(0, Number(e.target.value)))}
+              placeholder="100"
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label className="form-label">Availability</label>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
               <label className="toggle-switch">
                 <input
@@ -241,8 +260,8 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
                 />
                 <span className="toggle-slider" />
               </label>
-              <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isAvailable ? '#059669' : '#6B6B73' }}>
-                {isAvailable ? 'In Stock / Ready' : 'Out of Stock'}
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, color: isAvailable ? '#059669' : '#6B6B73' }}>
+                {isAvailable ? 'Available' : 'Out of Stock'}
               </span>
             </div>
           </div>

@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const FoodItemsPage: React.FC = () => {
-  const { foods, deleteFood, toggleFoodAvailability, categories } = useAdmin();
+  const { foods, deleteFood, toggleFoodAvailability, updateStock, categories } = useAdmin();
 
   // Search & Filter State
   const [search, setSearch] = useState('');
@@ -43,7 +43,8 @@ export const FoodItemsPage: React.FC = () => {
   // Stats calculation
   const totalItems = foods.length;
   const availableCount = foods.filter(f => f.isAvailable).length;
-  const outOfStockCount = foods.filter(f => !f.isAvailable).length;
+  const outOfStockCount = foods.filter(f => !f.isAvailable || (f.stock ?? 100) === 0).length;
+  const lowStockCount = foods.filter(f => (f.stock ?? 100) > 0 && (f.stock ?? 100) < 10).length;
   const categoriesCount = categories.length;
 
   // Filtered foods
@@ -59,10 +60,12 @@ export const FoodItemsPage: React.FC = () => {
 
       const matchType = selectedType === 'All' || food.type === selectedType;
 
+      const stockVal = food.stock !== undefined ? food.stock : 100;
       const matchStock =
         selectedStock === 'All' ||
-        (selectedStock === 'Available' && food.isAvailable) ||
-        (selectedStock === 'OutOfStock' && !food.isAvailable);
+        (selectedStock === 'InStock' && stockVal >= 10 && food.isAvailable) ||
+        (selectedStock === 'LowStock' && stockVal > 0 && stockVal < 10) ||
+        (selectedStock === 'OutOfStock' && (stockVal === 0 || !food.isAvailable));
 
       return matchSearch && matchCategory && matchType && matchStock;
     });
@@ -200,6 +203,29 @@ export const FoodItemsPage: React.FC = () => {
               width: 44,
               height: 44,
               borderRadius: 12,
+              backgroundColor: '#FFFBEB',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#D97706'
+            }}
+          >
+            <AlertCircle size={22} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>Low Stock (&lt;10)</div>
+            <div style={{ fontFamily: 'var(--font-brand)', fontSize: '1.4rem', fontWeight: 700, color: '#D97706' }}>
+              {lowStockCount}
+            </div>
+          </div>
+        </div>
+
+        <div className="card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 12,
               backgroundColor: '#F5F3FF',
               display: 'flex',
               alignItems: 'center',
@@ -276,7 +302,7 @@ export const FoodItemsPage: React.FC = () => {
               <option value="Non-Veg">Non-Veg Only</option>
             </select>
 
-            {/* Availability Filter */}
+            {/* Inventory / Stock Filter */}
             <select
               className="form-select"
               style={{ width: 'auto', height: 38, fontSize: '0.8125rem' }}
@@ -286,9 +312,10 @@ export const FoodItemsPage: React.FC = () => {
                 setCurrentPage(1);
               }}
             >
-              <option value="All">All Availability</option>
-              <option value="Available">Available (In Stock)</option>
-              <option value="OutOfStock">Out of Stock</option>
+              <option value="All">All Inventory</option>
+              <option value="InStock">Sufficient Stock (10+)</option>
+              <option value="LowStock">Low Stock (&lt; 10)</option>
+              <option value="OutOfStock">Out of Stock (0)</option>
             </select>
           </div>
 
@@ -319,6 +346,7 @@ export const FoodItemsPage: React.FC = () => {
                   <th>Category</th>
                   <th>Type</th>
                   <th>Price</th>
+                  <th>Stock & Restock</th>
                   <th>Availability</th>
                   <th>Preparation Time</th>
                   <th>Updated</th>
@@ -326,114 +354,164 @@ export const FoodItemsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {paginatedFoods.map(food => (
-                  <tr key={food.id}>
-                    {/* Food Column (Image + Name + Subtitle) */}
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <img
-                          src={food.image}
-                          alt={food.name}
-                          onClick={() => setFoodToView(food)}
-                          style={{
-                            width: 46,
-                            height: 46,
-                            borderRadius: 8,
-                            objectFit: 'cover',
-                            border: '1px solid var(--color-border)',
-                            cursor: 'pointer',
-                            flexShrink: 0
-                          }}
-                        />
-                        <div>
-                          <span
+                {paginatedFoods.map(food => {
+                  const stockCount = food.stock !== undefined ? food.stock : 100;
+                  const isLow = stockCount > 0 && stockCount < 10;
+                  const isOut = stockCount === 0 || !food.isAvailable;
+
+                  return (
+                    <tr key={food.id}>
+                      {/* Food Column (Image + Name + Subtitle) */}
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <img
+                            src={food.image}
+                            alt={food.name}
                             onClick={() => setFoodToView(food)}
                             style={{
-                              fontWeight: 600,
-                              color: 'var(--color-text-main)',
+                              width: 46,
+                              height: 46,
+                              borderRadius: 8,
+                              objectFit: 'cover',
+                              border: '1px solid var(--color-border)',
                               cursor: 'pointer',
-                              fontSize: '0.875rem'
+                              flexShrink: 0
                             }}
-                          >
-                            {food.name}
+                          />
+                          <div>
+                            <span
+                              onClick={() => setFoodToView(food)}
+                              style={{
+                                fontWeight: 600,
+                                color: 'var(--color-text-main)',
+                                cursor: 'pointer',
+                                fontSize: '0.875rem'
+                              }}
+                            >
+                              {food.name}
+                            </span>
+                            {food.description && (
+                              <div style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)', marginTop: 2, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                {food.description}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td>
+                        <span
+                          style={{
+                            fontSize: '0.78rem',
+                            fontWeight: 500,
+                            backgroundColor: '#F3F4F6',
+                            color: 'var(--color-text-secondary)',
+                            padding: '3px 8px',
+                            borderRadius: 6
+                          }}
+                        >
+                          {food.category}
+                        </span>
+                      </td>
+
+                      <td>
+                        <Badge variant={food.type === 'Veg' ? 'veg' : 'non-veg'} label={food.type} />
+                      </td>
+
+                      <td>
+                        <div>
+                          <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>
+                            {formatCurrency(food.price)}
                           </span>
-                          {food.description && (
-                            <div style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)', marginTop: 2, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {food.description}
+                          {food.originalPrice && food.originalPrice > food.price && (
+                            <div style={{ fontSize: '0.72rem', textDecoration: 'line-through', color: 'var(--color-text-muted)' }}>
+                              {formatCurrency(food.originalPrice)}
                             </div>
                           )}
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td>
-                      <span
-                        style={{
-                          fontSize: '0.78rem',
-                          fontWeight: 500,
-                          backgroundColor: '#F3F4F6',
-                          color: 'var(--color-text-secondary)',
-                          padding: '3px 8px',
-                          borderRadius: 6
-                        }}
-                      >
-                        {food.category}
-                      </span>
-                    </td>
-
-                    <td>
-                      <Badge variant={food.type === 'Veg' ? 'veg' : 'non-veg'} label={food.type} />
-                    </td>
-
-                    <td>
-                      <div>
-                        <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>
-                          {formatCurrency(food.price)}
-                        </span>
-                        {food.originalPrice && food.originalPrice > food.price && (
-                          <div style={{ fontSize: '0.72rem', textDecoration: 'line-through', color: 'var(--color-text-muted)' }}>
-                            {formatCurrency(food.originalPrice)}
+                      {/* Stock & Quick Restock */}
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '2px 6px', fontSize: '0.7rem', height: 24, lineHeight: '1' }}
+                            title="Decrease by 10"
+                            onClick={() => updateStock(food.id, Math.max(0, stockCount - 10))}
+                          >
+                            -10
+                          </button>
+                          <span
+                            style={{
+                              fontSize: '0.8125rem',
+                              fontWeight: 700,
+                              minWidth: 44,
+                              textAlign: 'center',
+                              color: isOut ? '#DC2626' : isLow ? '#D97706' : '#059669',
+                            }}
+                          >
+                            {stockCount}
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '2px 6px', fontSize: '0.7rem', height: 24, lineHeight: '1' }}
+                            title="Restock by 10"
+                            onClick={() => updateStock(food.id, stockCount + 10)}
+                          >
+                            +10
+                          </button>
+                        </div>
+                        {isLow && (
+                          <div style={{ fontSize: '0.68rem', color: '#D97706', fontWeight: 700, marginTop: 2 }}>
+                            ⚠ Low Stock
                           </div>
                         )}
-                      </div>
-                    </td>
+                        {stockCount === 0 && (
+                          <div style={{ fontSize: '0.68rem', color: '#DC2626', fontWeight: 700, marginTop: 2 }}>
+                            ✕ Out of Stock
+                          </div>
+                        )}
+                      </td>
 
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <label className="toggle-switch">
-                          <input
-                            type="checkbox"
-                            checked={food.isAvailable}
-                            onChange={() => toggleFoodAvailability(food.id)}
-                          />
-                          <span className="toggle-slider" />
-                        </label>
-                        <span
-                          style={{
-                            fontSize: '0.75rem',
-                            fontWeight: 600,
-                            color: food.isAvailable ? '#059669' : '#9CA3AF'
-                          }}
-                        >
-                          {food.isAvailable ? 'In Stock' : 'Out'}
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <label className="toggle-switch">
+                            <input
+                              type="checkbox"
+                              checked={food.isAvailable}
+                              onChange={() => toggleFoodAvailability(food.id)}
+                            />
+                            <span className="toggle-slider" />
+                          </label>
+                          <span
+                            style={{
+                              fontSize: '0.75rem',
+                              fontWeight: 600,
+                              color: food.isAvailable ? '#059669' : '#9CA3AF'
+                            }}
+                          >
+                            {food.isAvailable ? 'In Stock' : 'Out'}
+                          </span>
+                        </div>
+                      </td>
+
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
+                          <Clock size={14} color="var(--color-text-muted)" />
+                          <span>{food.prepTime}</span>
+                        </div>
+                      </td>
+
+                      <td>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                          {food.updatedAt}
                         </span>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8125rem', color: 'var(--color-text-secondary)' }}>
-                        <Clock size={14} color="var(--color-text-muted)" />
-                        <span>{food.prepTime}</span>
-                      </div>
-                    </td>
-
-                    <td>
-                      <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
-                        {food.updatedAt}
-                      </span>
-                    </td>
-
-                    <td style={{ textAlign: 'right' }}>
+                      <td style={{ textAlign: 'right' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         <button
                           type="button"
@@ -465,7 +543,8 @@ export const FoodItemsPage: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))}
+                );
+              })}
               </tbody>
             </table>
           </div>

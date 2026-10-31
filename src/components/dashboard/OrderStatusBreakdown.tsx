@@ -4,17 +4,18 @@ import { Clock, ChefHat, CheckCircle2, Truck, Check } from 'lucide-react';
 
 export const OrderStatusBreakdown: React.FC = () => {
   const { orders } = useAdmin();
+  const operationalOrders = orders.filter(o => o.paymentStatus === 'Paid');
 
   const counts = {
-    Pending: orders.filter(o => o.status === 'Pending').length,
-    Accepted: orders.filter(o => o.status === 'Accepted').length,
-    Preparing: orders.filter(o => o.status === 'Preparing').length,
-    Ready: orders.filter(o => o.status === 'Ready').length,
-    Served: orders.filter(o => o.status === 'Served').length,
-    Completed: orders.filter(o => o.status === 'Completed').length
+    Pending: operationalOrders.filter(o => o.status === 'Pending').length,
+    Accepted: operationalOrders.filter(o => o.status === 'Accepted').length,
+    Preparing: operationalOrders.filter(o => o.status === 'Preparing').length,
+    Ready: operationalOrders.filter(o => o.status === 'Ready').length,
+    Served: operationalOrders.filter(o => o.status === 'Served').length,
+    Completed: operationalOrders.filter(o => o.status === 'Completed').length
   };
 
-  const total = orders.length || 1;
+  const total = operationalOrders.length || 1;
 
   const items = [
     { label: 'Pending', count: counts.Pending, color: '#F59E0B', bg: '#FEF3C7', icon: Clock },

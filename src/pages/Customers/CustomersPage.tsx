@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAdmin } from '../../context/AdminContext';
 import type { Customer } from '../../types';
 import { Badge } from '../../components/common/Badge';
@@ -17,11 +17,15 @@ import {
 } from 'lucide-react';
 
 export const CustomersPage: React.FC = () => {
-  const { customers, orders } = useAdmin();
+  const { customers, orders, refreshCustomers } = useAdmin();
 
   const [search, setSearch] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+
+  useEffect(() => {
+    refreshCustomers();
+  }, []);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);

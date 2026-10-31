@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAdmin } from '../../context/AdminContext';
 import type { Payment } from '../../types';
 import { StatCard } from '../../components/common/StatCard';
@@ -16,12 +16,17 @@ import {
   RotateCcw,
   Download,
   IndianRupee,
-  Receipt
+  Receipt,
+  RefreshCw
 } from 'lucide-react';
 
 export const PaymentsPage: React.FC = () => {
-  const { payments } = useAdmin();
+  const { payments, refreshPayments } = useAdmin();
   const { showToast } = useToast();
+
+  useEffect(() => {
+    refreshPayments();
+  }, []);
 
   const [search, setSearch] = useState('');
   const [selectedMethod, setSelectedMethod] = useState<string>('All');
@@ -95,14 +100,28 @@ export const PaymentsPage: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() => showToast('Exporting Statement', 'CSV statement for today generated.', 'info')}
-        >
-          <Download size={15} />
-          <span>Export Transactions (CSV)</span>
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={async () => {
+              await refreshPayments();
+              showToast('Transactions Refreshed', 'Payment records synchronized with ledger.', 'info');
+            }}
+          >
+            <RefreshCw size={15} />
+            <span>Refresh</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => showToast('Exporting Statement', 'CSV statement for today generated.', 'info')}
+          >
+            <Download size={15} />
+            <span>Export Transactions (CSV)</span>
+          </button>
+        </div>
       </div>
 
       {/* 5 Stats Cards */}

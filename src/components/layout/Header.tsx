@@ -6,9 +6,11 @@ import {
   Search,
   CheckCircle,
   ExternalLink,
-  ChevronRight
+  ChevronRight,
+  LogOut
 } from 'lucide-react';
 import { useAdmin } from '../../context/AdminContext';
+import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
 
 interface HeaderProps {
@@ -20,6 +22,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobile, collapsed }) => 
   const location = useLocation();
   const navigate = useNavigate();
   const { orders, settings } = useAdmin();
+  const { user, logout } = useAuth();
   const { showToast } = useToast();
 
   const [notificationsOpen, setNotificationsOpen] = useState(false);
@@ -408,10 +411,10 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobile, collapsed }) => 
 
             <div className="desktop-only" style={{ display: 'flex', flexDirection: 'column' }}>
               <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--color-text-main)', lineHeight: 1.2 }}>
-                {settings.profile.name}
+                {user?.username ? `@${user.username}` : settings.profile.name}
               </span>
               <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
-                General Manager
+                {user?.role ? `${user.role.toUpperCase()} • Operations` : 'General Manager'}
               </span>
             </div>
           </div>
@@ -435,7 +438,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobile, collapsed }) => 
             >
               <div style={{ padding: '16px', borderBottom: '1px solid var(--color-border-subtle)' }}>
                 <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--color-text-main)' }}>
-                  {settings.profile.name}
+                  {user?.username ? `Operator: ${user.username}` : settings.profile.name}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', marginTop: 2 }}>
                   {settings.profile.email}
@@ -450,7 +453,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobile, collapsed }) => 
                     }}
                   />
                   <span style={{ fontSize: '0.72rem', fontWeight: 600, color: '#059669' }}>
-                    Online • Super Admin
+                    Active • {user?.role || 'Admin'}
                   </span>
                 </div>
               </div>
@@ -496,6 +499,32 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobile, collapsed }) => 
                 >
                   <span>Diagnostic Health</span>
                   <CheckCircle size={14} color="#10B981" />
+                </div>
+
+                <div
+                  onClick={async () => {
+                    setProfileOpen(false);
+                    await logout();
+                    navigate('/login');
+                    showToast('Signed Out', 'Administrator session terminated safely.', 'info');
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '8px 12px',
+                    borderRadius: 8,
+                    fontSize: '0.8125rem',
+                    color: '#EF4444',
+                    cursor: 'pointer',
+                    marginTop: 4,
+                    borderTop: '1px solid #F4F4F5'
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#FEF2F2')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  <span style={{ fontWeight: 600 }}>Sign Out</span>
+                  <LogOut size={14} color="#EF4444" />
                 </div>
               </div>
             </div>

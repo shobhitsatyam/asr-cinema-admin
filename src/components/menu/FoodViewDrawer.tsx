@@ -91,7 +91,7 @@ export const FoodViewDrawer: React.FC<FoodViewDrawerProps> = ({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
+            gridTemplateColumns: '1fr 1fr 1fr',
             gap: 12,
             padding: 16,
             backgroundColor: '#FAFAFB',
@@ -104,7 +104,7 @@ export const FoodViewDrawer: React.FC<FoodViewDrawerProps> = ({
             <div
               style={{
                 fontFamily: 'var(--font-brand)',
-                fontSize: '1.4rem',
+                fontSize: '1.25rem',
                 fontWeight: 700,
                 color: 'var(--color-primary)',
                 marginTop: 2
@@ -120,10 +120,27 @@ export const FoodViewDrawer: React.FC<FoodViewDrawerProps> = ({
           </div>
 
           <div>
-            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Preparation Time</span>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Inventory</span>
             <div
               style={{
-                fontSize: '0.95rem',
+                fontSize: '1rem',
+                fontWeight: 700,
+                color: (food.stock ?? 100) === 0 ? '#DC2626' : (food.stock ?? 100) < 10 ? '#D97706' : '#059669',
+                marginTop: 4
+              }}
+            >
+              {food.stock !== undefined ? `${food.stock} units` : '100 units'}
+            </div>
+            <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>
+              {(food.stock ?? 100) < 10 && (food.stock ?? 100) > 0 ? 'Low Stock' : (food.stock ?? 100) === 0 ? 'Out of Stock' : 'In Stock'}
+            </span>
+          </div>
+
+          <div>
+            <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Prep Time</span>
+            <div
+              style={{
+                fontSize: '0.9rem',
                 fontWeight: 600,
                 color: 'var(--color-text-main)',
                 marginTop: 6,
@@ -132,7 +149,7 @@ export const FoodViewDrawer: React.FC<FoodViewDrawerProps> = ({
                 gap: 6
               }}
             >
-              <Clock size={16} color="var(--color-primary)" />
+              <Clock size={15} color="var(--color-primary)" />
               {food.prepTime}
             </div>
           </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAdmin } from '../../context/AdminContext';
 import { StatCard } from '../../components/common/StatCard';
 import { RevenueChart } from '../../components/dashboard/RevenueChart';
@@ -7,6 +7,8 @@ import { RecentOrdersTable } from '../../components/dashboard/RecentOrdersTable'
 import { PopularItems } from '../../components/dashboard/PopularItems';
 import { OrderDetailDrawer } from '../../components/orders/OrderDetailDrawer';
 import { reportDataMap } from '../../data/mockReports';
+import { getDashboardStats, type DashboardStats } from '../../services/api';
+import { formatCurrency } from '../../utils/formatters';
 import type { Order } from '../../types';
 import {
   IndianRupee,
@@ -22,14 +24,49 @@ import {
 export const DashboardPage: React.FC = () => {
   const { orders, foods, seats } = useAdmin();
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [liveStats, setLiveStats] = useState<DashboardStats | null>(null);
 
-  // Stats calculations
-  const pendingCount = orders.filter(o => o.status === 'Pending').length;
-  const completedCount = orders.filter(o => o.status === 'Completed' || o.status === 'Served').length;
-  const activeSeatsCount = seats.filter(s => s.status !== 'Blocked').length ? 146 : 146;
-  const totalSeatsCount = 180;
+  // Operational constraint: Only verified Paid orders are reflected in operational dashboard
+  const operationalOrders = orders.filter(o => o.paymentStatus === 'Paid');
+  const pendingCount = operationalOrders.filter(o => o.status === 'Pending').length;
+  const completedCount = operationalOrders.filter(o => o.status === 'Completed' || o.status === 'Served').length;
+  const actualActiveSeats = seats.filter(s => s.status !== 'Blocked').length || 146;
+  const actualTotalSeats = seats.length || 180;
 
-  const chartData = reportDataMap['7days'].revenueTrend;
+  useEffect(() => {
+    let isMounted = true;
+    getDashboardStats()
+      .then(stats => {
+        if (isMounted && stats) setLiveStats(stats);
+      })
+      .catch(err => {
+        console.warn('Dashboard stats fallback to local context:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [orders]);
+
+  const calculatedRevenue = operationalOrders.reduce((sum, o) => sum + (o.total || 0), 0);
+  const revenueValue = liveStats?.todayRevenue !== undefined
+    ? formatCurrency(liveStats.todayRevenue)
+    : formatCurrency(calculatedRevenue || 48650);
+
+  const todayOrdersValue = liveStats?.todayOrders !== undefined
+    ? String(liveStats.todayOrders)
+    : String(operationalOrders.length || 126);
+
+  const completedOrdersValue = liveStats?.completedOrders !== undefined
+    ? liveStats.completedOrders
+    : (completedCount || 108);
+
+  const activeSeatsValue = liveStats?.activeSeats !== undefined && liveStats?.totalSeats !== undefined
+    ? `${liveStats.activeSeats} / ${liveStats.totalSeats}`
+    : `${actualActiveSeats} / ${actualTotalSeats}`;
+
+  const chartData = liveStats?.revenueTrend && liveStats.revenueTrend.length > 0
+    ? liveStats.revenueTrend
+    : reportDataMap['7days'].revenueTrend;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -111,10 +148,10 @@ export const DashboardPage: React.FC = () => {
       >
         <StatCard
           title="Today's Revenue"
-          value="₹48,650"
+          value={revenueValue}
           change="12.5%"
           isPositive={true}
-          subtitle="vs yesterday"
+          subtitle="verified paid orders"
           icon={IndianRupee}
           iconBg="#FEF2F2"
           iconColor="#E31B23"
@@ -122,7 +159,7 @@ export const DashboardPage: React.FC = () => {
 
         <StatCard
           title="Today's Orders"
-          value="126"
+          value={todayOrdersValue}
           change="8.2%"
           isPositive={true}
           subtitle="cinema patrons"
@@ -142,7 +179,7 @@ export const DashboardPage: React.FC = () => {
 
         <StatCard
           title="Completed Orders"
-          value={completedCount > 0 ? 108 : 108}
+          value={completedOrdersValue}
           change="14.3%"
           isPositive={true}
           subtitle="Delivered to seat"
@@ -153,7 +190,7 @@ export const DashboardPage: React.FC = () => {
 
         <StatCard
           title="Food Items"
-          value={foods.length > 0 ? 84 : 84}
+          value={foods.length > 0 ? foods.length : 84}
           subtitle="Active on menu"
           icon={Utensils}
           iconBg="#F5F3FF"
@@ -162,10 +199,10 @@ export const DashboardPage: React.FC = () => {
 
         <StatCard
           title="Active Seats"
-          value={`${activeSeatsCount} / ${totalSeatsCount}`}
+          value={activeSeatsValue}
           change="81%"
           isPositive={true}
-          subtitle="Occupancy rate"
+          subtitle="Available capacity"
           icon={Armchair}
           iconBg="#FEF2F2"
           iconColor="#B5121B"
@@ -253,7 +290,7 @@ export const DashboardPage: React.FC = () => {
               ● Auto-refreshing
             </span>
           </div>
-          <RecentOrdersTable orders={orders} onViewOrder={ord => setSelectedOrder(ord)} />
+          <RecentOrdersTable orders={operationalOrders} onViewOrder={ord => setSelectedOrder(ord)} />
         </div>
 
         {/* Popular Items */}

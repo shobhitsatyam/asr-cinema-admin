@@ -31,15 +31,20 @@ export const OrdersPage: React.FC = () => {
     }
   }, [queryOrderId]);
 
+  // Operational constraint: Only verified Paid orders appear in operational management
+  const operationalOrders = useMemo(() => {
+    return orders.filter(o => o.paymentStatus === 'Paid');
+  }, [orders]);
+
   const selectedOrder = useMemo(() => {
-    return orders.find(o => o.id === selectedOrderId) || null;
-  }, [orders, selectedOrderId]);
+    return operationalOrders.find(o => o.id === selectedOrderId) || null;
+  }, [operationalOrders, selectedOrderId]);
 
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 8;
 
-  const tabs = [
+  const tabs = useMemo(() => [
     'All',
     'Pending',
     'Accepted',
@@ -48,19 +53,19 @@ export const OrdersPage: React.FC = () => {
     'Served',
     'Completed',
     'Cancelled'
-  ];
+  ], []);
 
   // Tab counts
   const tabCounts = useMemo(() => {
-    const counts: Record<string, number> = { All: orders.length };
+    const counts: Record<string, number> = { All: operationalOrders.length };
     tabs.slice(1).forEach(tab => {
-      counts[tab] = orders.filter(o => o.status === tab).length;
+      counts[tab] = operationalOrders.filter(o => o.status === tab).length;
     });
     return counts;
-  }, [orders]);
+  }, [operationalOrders, tabs]);
 
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
+    return operationalOrders.filter(order => {
       const matchTab = activeTab === 'All' || order.status === activeTab;
       const matchAudi = selectedAudi === 'All' || order.auditorium === selectedAudi;
       const matchSearch =
@@ -72,7 +77,7 @@ export const OrdersPage: React.FC = () => {
 
       return matchTab && matchAudi && matchSearch;
     });
-  }, [orders, activeTab, selectedAudi, search]);
+  }, [operationalOrders, activeTab, selectedAudi, search]);
 
   const paginatedOrders = useMemo(() => {
     const start = (currentPage - 1) * pageSize;

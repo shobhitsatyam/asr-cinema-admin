@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 
 export const SeatsPage: React.FC = () => {
-  const { seats, batchGenerateQR, blockSeat, unblockSeat } = useAdmin();
+  const { seats, batchGenerateQR, blockSeat, unblockSeat, refreshSeats } = useAdmin();
   const { showToast } = useToast();
 
   const [selectedAudi, setSelectedAudi] = useState<AuditoriumName>('Audi 2');
@@ -190,7 +190,10 @@ export const SeatsPage: React.FC = () => {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => batchGenerateQR(selectedAudi)}
+            onClick={async () => {
+              batchGenerateQR(selectedAudi);
+              await refreshSeats();
+            }}
             title={`Sync and verify QR codes for all seats in ${selectedAudi}`}
           >
             <RefreshCw size={15} />

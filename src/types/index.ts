@@ -12,6 +12,8 @@ export interface FoodItem {
   isAvailable: boolean;
   prepTime: string;
   updatedAt: string;
+  stock?: number;
+  inStock?: boolean;
 }
 
 export interface Category {
@@ -235,4 +237,10 @@ export interface ToastMessage {
   message?: string;
   type: 'success' | 'error' | 'info' | 'warning';
   duration?: number;
+}
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  role: 'superadmin' | 'admin' | 'manager';
 }

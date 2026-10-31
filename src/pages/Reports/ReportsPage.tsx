@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { reportDataMap } from '../../data/mockReports';
 import type { ReportPeriodData } from '../../data/mockReports';
+import { getAnalyticsReports, type AnalyticsReport } from '../../services/api';
 import { RevenueChart } from '../../components/dashboard/RevenueChart';
 import { formatCurrency } from '../../utils/formatters';
 import { useToast } from '../../context/ToastContext';
@@ -12,11 +13,29 @@ import {
 export const ReportsPage: React.FC = () => {
   const { showToast } = useToast();
   const [period, setPeriod] = useState<'today' | '7days' | '30days' | 'month'>('7days');
+  const [liveReport, setLiveReport] = useState<AnalyticsReport | null>(null);
 
-  const currentData: ReportPeriodData = reportDataMap[period];
+  useEffect(() => {
+    let isMounted = true;
+    getAnalyticsReports(period)
+      .then(report => {
+        if (isMounted && report) setLiveReport(report);
+      })
+      .catch(err => {
+        console.warn('Live analytics report fallback:', err);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [period]);
+
+  const currentData: ReportPeriodData = (liveReport && liveReport.totalRevenue > 0)
+    ? liveReport
+    : reportDataMap[period];
 
   const handleExport = () => {
-    showToast('Exporting Report', `Generated PDF sales summary report for ${period}.`);
+    window.print();
+    showToast('Exporting Report', `Sales summary print view prepared for ${period}.`);
   };
 
   return (
