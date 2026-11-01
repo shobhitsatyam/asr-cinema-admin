@@ -401,7 +401,7 @@ export const FoodItemsPage: React.FC = () => {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Food Product</th>
+                  <th>Product</th>
                   <th>Category</th>
                   <th>Type</th>
                   <th>Price</th>
@@ -422,41 +422,36 @@ export const FoodItemsPage: React.FC = () => {
 
                   return (
                     <tr key={food.id} style={{ opacity: isUpdatingThisStock || isUpdatingThisAvail ? 0.75 : 1 }}>
-                      {/* Food Column (Image + Name + Subtitle) */}
+                      {/* Product Name & Description Column */}
                       <td>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          <img
-                            src={food.image}
-                            alt={food.name}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                          <span
                             onClick={() => setFoodToView(food)}
                             style={{
-                              width: 48,
-                              height: 48,
-                              borderRadius: 8,
-                              objectFit: 'cover',
-                              border: '1px solid var(--color-border)',
+                              fontWeight: 600,
+                              color: 'var(--color-text-main)',
                               cursor: 'pointer',
-                              flexShrink: 0
+                              fontSize: '0.875rem',
+                              lineHeight: 1.3
                             }}
-                          />
-                          <div>
-                            <span
-                              onClick={() => setFoodToView(food)}
+                          >
+                            {food.name}
+                          </span>
+                          {food.description && (
+                            <div
                               style={{
-                                fontWeight: 600,
-                                color: 'var(--color-text-main)',
-                                cursor: 'pointer',
-                                fontSize: '0.875rem'
+                                fontSize: '0.73rem',
+                                color: 'var(--color-text-muted)',
+                                maxWidth: 260,
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis'
                               }}
+                              title={food.description}
                             >
-                              {food.name}
-                            </span>
-                            {food.description && (
-                              <div style={{ fontSize: '0.73rem', color: 'var(--color-text-muted)', marginTop: 2, maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                {food.description}
-                              </div>
-                            )}
-                          </div>
+                              {food.description}
+                            </div>
+                          )}
                         </div>
                       </td>
 
