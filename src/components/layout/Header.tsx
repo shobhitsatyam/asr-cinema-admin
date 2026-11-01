@@ -60,14 +60,6 @@ export const Header: React.FC<HeaderProps> = ({ onToggleMobile, collapsed }) => 
       pageTitle = 'Food Items Management';
       breadcrumbs.push({ label: 'Menu', path: '/menu/foods' });
       breadcrumbs.push({ label: 'Food Items', path: '/menu/foods' });
-    } else if (pathParts[1] === 'categories') {
-      pageTitle = 'Category Management';
-      breadcrumbs.push({ label: 'Menu', path: '/menu/categories' });
-      breadcrumbs.push({ label: 'Categories', path: '/menu/categories' });
-    } else if (pathParts[1] === 'combos') {
-      pageTitle = 'Combo Meals Management';
-      breadcrumbs.push({ label: 'Menu', path: '/menu/combos' });
-      breadcrumbs.push({ label: 'Combos', path: '/menu/combos' });
     }
   } else if (pathParts[0] === 'seats') {
     pageTitle = 'Auditorium Seats & QR Codes';

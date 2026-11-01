@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import type {
   FoodItem,
   Category,
-  Combo,
   Order,
   Payment,
   Customer,
@@ -12,7 +11,6 @@ import type {
 
 import { initialFoods } from '../data/mockFoods';
 import { initialCategories } from '../data/mockCategories';
-import { initialCombos } from '../data/mockCombos';
 import { initialOrders } from '../data/mockOrders';
 import { initialPayments } from '../data/mockPayments';
 import { initialCustomers } from '../data/mockCustomers';
@@ -28,15 +26,6 @@ import {
   deleteProduct as deleteProductApi,
   updateProductStock as updateProductStockApi,
   getCategories as fetchCategoriesApi,
-  createCategory as createCategoryApi,
-  updateCategory as updateCategoryApi,
-  toggleCategoryStatus as toggleCategoryStatusApi,
-  deleteCategory as deleteCategoryApi,
-  getCombos as fetchCombosApi,
-  createCombo as createComboApi,
-  updateCombo as updateComboApi,
-  toggleComboAvailability as toggleComboAvailabilityApi,
-  deleteCombo as deleteComboApi,
   getPayments as fetchPaymentsApi,
   getCustomers as fetchCustomersApi,
   getSettings as fetchSettingsApi,
@@ -54,17 +43,6 @@ interface AdminContextType {
 
   // Categories
   categories: Category[];
-  addCategory: (category: Omit<Category, 'id' | 'itemCount'>) => Promise<void> | void;
-  updateCategory: (id: string, category: Partial<Category>) => Promise<void> | void;
-  deleteCategory: (id: string) => Promise<void> | void;
-  toggleCategoryStatus: (id: string) => Promise<void> | void;
-
-  // Combos
-  combos: Combo[];
-  addCombo: (combo: Omit<Combo, 'id'>) => Promise<void> | void;
-  updateCombo: (id: string, combo: Partial<Combo>) => Promise<void> | void;
-  deleteCombo: (id: string) => Promise<void> | void;
-  toggleComboAvailability: (id: string) => Promise<void> | void;
 
   // Orders
   orders: Order[];
@@ -104,7 +82,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [foods, setFoods] = useState<FoodItem[]>(() => loadFromStorage('foods', initialFoods));
   const [categories, setCategories] = useState<Category[]>(() => loadFromStorage('categories', initialCategories));
-  const [combos, setCombos] = useState<Combo[]>(() => loadFromStorage('combos', initialCombos));
   const [orders, setOrders] = useState<Order[]>(() => {
     const loaded = loadFromStorage<Order[]>('orders', initialOrders);
     const paidInitial = initialOrders.filter(o => o.paymentStatus === 'Paid');
@@ -226,7 +203,7 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
   }, []);
 
-  // Reconcile catalog, combos, payments, customers, settings from backend
+  // Reconcile catalog, payments, customers, settings from backend
   useEffect(() => {
     let isMounted = true;
 
@@ -235,7 +212,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const [
           backendProducts,
           backendCategories,
-          backendCombos,
           backendPayments,
           backendCustomers,
           backendSettings,
@@ -246,10 +222,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           }),
           fetchCategoriesApi().catch(err => {
             console.warn('Backend categories not loaded:', err.message);
-            return null;
-          }),
-          fetchCombosApi().catch(err => {
-            console.warn('Backend combos not loaded:', err.message);
             return null;
           }),
           fetchPaymentsApi().catch(err => {
@@ -279,9 +251,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               ).length,
             }));
             setCategories(reconciledCategories);
-          }
-          if (Array.isArray(backendCombos) && backendCombos.length > 0) {
-            setCombos(backendCombos);
           }
           if (Array.isArray(backendPayments) && backendPayments.length > 0) {
             setPayments(backendPayments);
@@ -334,10 +303,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY_PREFIX + 'categories', JSON.stringify(categories)); } catch (e) { console.error(e); }
   }, [categories]);
-
-  useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY_PREFIX + 'combos', JSON.stringify(combos)); } catch (e) { console.error(e); }
-  }, [combos]);
 
   useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY_PREFIX + 'orders', JSON.stringify(orders)); } catch (e) { console.error(e); }
@@ -485,152 +450,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Category handlers connected to backend MongoDB API
-  const addCategory = async (catData: Omit<Category, 'id' | 'itemCount'>) => {
-    try {
-      const created = await createCategoryApi(catData);
-      setCategories(prev => [...prev.filter(c => c.slug !== created.slug), created]);
-      showToast('Category Created', `${created.name} category has been persisted.`);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Server error';
-      console.error('Failed to create category:', err);
-      showToast('Category Creation Failed', msg, 'error');
-    }
-  };
-
-  const updateCategory = async (id: string, updated: Partial<Category>) => {
-    const prevCategories = categories;
-    setCategories(prev =>
-      prev.map(cat => (cat.id === id || cat.slug === id ? { ...cat, ...updated } : cat))
-    );
-    try {
-      const saved = await updateCategoryApi(id, updated);
-      setCategories(prev =>
-        prev.map(cat => (cat.id === id || cat.slug === id ? { ...cat, ...saved } : cat))
-      );
-      showToast('Category Updated', 'Changes saved to database.');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not update category.';
-      console.error(`Failed to update category ${id}:`, err);
-      setCategories(prevCategories);
-      showToast('Update Failed', msg, 'error');
-    }
-  };
-
-  const deleteCategory = async (id: string) => {
-    const target = categories.find(c => c.id === id || c.slug === id);
-    if (!target) return;
-    const prevCategories = categories;
-
-    try {
-      const result = await deleteCategoryApi(id);
-      if (result.deactivated) {
-        setCategories(prev =>
-          prev.map(c => (c.id === id || c.slug === id ? { ...c, isActive: false } : c))
-        );
-        showToast('Category Deactivated', result.message, 'warning');
-      } else {
-        setCategories(prev => prev.filter(c => c.id !== id && c.slug !== id));
-        showToast('Category Deleted', `${target.name} removed from catalog.`, 'info');
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not delete category.';
-      console.error(`Failed to delete category ${id}:`, err);
-      setCategories(prevCategories);
-      showToast('Delete Failed', msg, 'error');
-    }
-  };
-
-  const toggleCategoryStatus = async (id: string) => {
-    const target = categories.find(c => c.id === id || c.slug === id);
-    if (!target) return;
-    const next = !target.isActive;
-    const prevCategories = categories;
-
-    setCategories(prev =>
-      prev.map(c => (c.id === id || c.slug === id ? { ...c, isActive: next } : c))
-    );
-
-    try {
-      const updated = await toggleCategoryStatusApi(id);
-      setCategories(prev =>
-        prev.map(c => (c.id === id || c.slug === id ? { ...c, isActive: updated.isActive } : c))
-      );
-      showToast(`Category ${target.name}`, `Category marked as ${updated.isActive ? 'Active' : 'Inactive'}.`);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not toggle category status.';
-      console.error(`Failed to toggle category ${id}:`, err);
-      setCategories(prevCategories);
-      showToast('Action Failed', msg, 'error');
-    }
-  };
-
-  // Combo handlers connected to backend API
-  const addCombo = async (comboData: Omit<Combo, 'id'>) => {
-    try {
-      const created = await createComboApi(comboData);
-      setCombos(prev => [created, ...prev]);
-      showToast('Combo Created', `${created.name} added to menu.`);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to create combo';
-      showToast('Creation Failed', msg, 'error');
-    }
-  };
-
-  const updateCombo = async (id: string, updated: Partial<Combo>) => {
-    const prevCombos = combos;
-    setCombos(prev =>
-      prev.map(c => (c.id === id ? { ...c, ...updated } : c))
-    );
-    try {
-      const saved = await updateComboApi(id, updated);
-      setCombos(prev => prev.map(c => (c.id === id ? saved : c)));
-      showToast('Combo Updated', 'Combo details saved.');
-    } catch (err: unknown) {
-      setCombos(prevCombos);
-      const msg = err instanceof Error ? err.message : 'Failed to update combo';
-      showToast('Update Failed', msg, 'error');
-    }
-  };
-
-  const deleteCombo = async (id: string) => {
-    const target = combos.find(c => c.id === id);
-    if (!target) return;
-    const prevCombos = combos;
-    setCombos(prev => prev.filter(c => c.id !== id));
-    try {
-      await deleteComboApi(id);
-      showToast('Combo Deleted', `${target.name} removed.`, 'info');
-    } catch (err: unknown) {
-      setCombos(prevCombos);
-      const msg = err instanceof Error ? err.message : 'Failed to delete combo';
-      showToast('Delete Failed', msg, 'error');
-    }
-  };
-
-  const toggleComboAvailability = async (id: string) => {
-    const target = combos.find(c => c.id === id);
-    if (!target) return;
-    const next = !target.isAvailable;
-    const prevCombos = combos;
-    setCombos(prev =>
-      prev.map(c => (c.id === id ? { ...c, isAvailable: next } : c))
-    );
-    try {
-      const updated = await toggleComboAvailabilityApi(id);
-      setCombos(prev => prev.map(c => (c.id === id ? updated : c)));
-      showToast(
-        next ? 'Combo Activated' : 'Combo Marked Unavailable',
-        target.name,
-        next ? 'success' : 'warning'
-      );
-    } catch (err: unknown) {
-      setCombos(prevCombos);
-      const msg = err instanceof Error ? err.message : 'Failed to toggle combo';
-      showToast('Action Failed', msg, 'error');
-    }
-  };
-
   // Order status handler
   const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     const order = orders.find(o => o.id === orderId);
@@ -730,16 +549,6 @@ export const AdminProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateStock,
 
         categories,
-        addCategory,
-        updateCategory,
-        deleteCategory,
-        toggleCategoryStatus,
-
-        combos,
-        addCombo,
-        updateCombo,
-        deleteCombo,
-        toggleComboAvailability,
 
         orders,
         updateOrderStatus,

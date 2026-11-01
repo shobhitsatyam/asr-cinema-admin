@@ -5,8 +5,6 @@ import { ProtectedRoute } from '../components/auth/ProtectedRoute';
 import { LoginPage } from '../pages/Auth/LoginPage';
 import { DashboardPage } from '../pages/Dashboard/DashboardPage';
 import { FoodItemsPage } from '../pages/Menu/FoodItemsPage';
-import { CategoriesPage } from '../pages/Menu/CategoriesPage';
-import { CombosPage } from '../pages/Menu/CombosPage';
 import { OrdersPage } from '../pages/Orders/OrdersPage';
 import { PaymentsPage } from '../pages/Payments/PaymentsPage';
 import { CustomersPage } from '../pages/Customers/CustomersPage';
@@ -29,8 +27,6 @@ export const AppRoutes: React.FC = () => {
           <Route path="menu">
             <Route index element={<Navigate to="/menu/foods" replace />} />
             <Route path="foods" element={<FoodItemsPage />} />
-            <Route path="categories" element={<CategoriesPage />} />
-            <Route path="combos" element={<CombosPage />} />
           </Route>
 
           <Route path="orders" element={<OrdersPage />} />

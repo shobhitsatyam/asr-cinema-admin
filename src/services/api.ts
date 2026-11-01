@@ -3,7 +3,6 @@ import type {
   OrderStatus,
   FoodItem,
   Category,
-  Combo,
   Payment,
   Customer,
   SystemSettings,
@@ -107,12 +106,6 @@ export interface ProductApiResponse {
 export interface CategoriesApiResponse {
   success: boolean;
   categories: Record<string, unknown>[];
-  message?: string;
-}
-
-export interface CategoryApiResponse {
-  success: boolean;
-  category?: Record<string, unknown>;
   message?: string;
 }
 
@@ -356,98 +349,6 @@ export async function getCategories(): Promise<Category[]> {
 }
 
 /**
- * Create a new category in MongoDB backend.
- * POST /api/categories
- */
-export async function createCategory(catData: Omit<Category, 'id' | 'itemCount'>): Promise<Category> {
-  const response = await fetch(`${API_BASE_URL}/categories`, {
-    method: 'POST',
-    headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(catData),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to create category: HTTP ${response.status}`);
-  }
-
-  const data: CategoryApiResponse = await response.json();
-  if (!data.success || !data.category) {
-    throw new Error(data.message || 'No category returned from backend');
-  }
-
-  return normalizeCategory(data.category);
-}
-
-/**
- * Update an existing category in MongoDB backend.
- * PATCH /api/categories/:id
- */
-export async function updateCategory(id: string, updates: Partial<Category>): Promise<Category> {
-  const encodedId = encodeURIComponent(id);
-  const response = await fetch(`${API_BASE_URL}/categories/${encodedId}`, {
-    method: 'PATCH',
-    headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(updates),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to update category ${id}: HTTP ${response.status}`);
-  }
-
-  const data: CategoryApiResponse = await response.json();
-  if (!data.success || !data.category) {
-    throw new Error(data.message || 'No updated category returned from backend');
-  }
-
-  return normalizeCategory(data.category);
-}
-
-/**
- * Toggle category active status in MongoDB backend.
- * PATCH /api/categories/:id/status
- */
-export async function toggleCategoryStatus(id: string): Promise<Category> {
-  const encodedId = encodeURIComponent(id);
-  const response = await fetch(`${API_BASE_URL}/categories/${encodedId}/status`, {
-    method: 'PATCH',
-    headers: getAdminHeaders(),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to toggle category ${id}: HTTP ${response.status}`);
-  }
-
-  const data: CategoryApiResponse = await response.json();
-  if (!data.success || !data.category) {
-    throw new Error(data.message || 'No category returned from backend');
-  }
-
-  return normalizeCategory(data.category);
-}
-
-/**
- * Delete or safely deactivate category in MongoDB backend.
- * DELETE /api/categories/:id
- */
-export async function deleteCategory(id: string): Promise<{ success: boolean; message: string; deactivated?: boolean }> {
-  const encodedId = encodeURIComponent(id);
-  const response = await fetch(`${API_BASE_URL}/categories/${encodedId}`, {
-    method: 'DELETE',
-    headers: getAdminHeaders(),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to delete category ${id}: HTTP ${response.status}`);
-  }
-
-  return await response.json();
-}
-
-/**
  * Update stock quantity for a product in backend.
  * PATCH /api/products/:id/stock
  */
@@ -539,103 +440,6 @@ export async function logoutApi(): Promise<{ success: boolean }> {
     setAdminSessionKey('');
   }
   return { success: true };
-}
-
-// ----------------------------------------------------
-// COMBOS APIS
-// ----------------------------------------------------
-
-export async function getCombos(): Promise<Combo[]> {
-  const response = await fetch(`${API_BASE_URL}/combos`, {
-    method: 'GET',
-    cache: 'no-store',
-    headers: getAdminHeaders(),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch combos: HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  if (!data.success || !Array.isArray(data.combos)) {
-    throw new Error(data.message || 'Invalid combos payload');
-  }
-
-  return data.combos.map((c: Record<string, unknown>) => ({
-    id: String(c.id || c._id || ''),
-    name: String(c.name || ''),
-    items: Array.isArray(c.items) ? (c.items as string[]) : [],
-    originalPrice: Number(c.originalPrice || c.sellingPrice || 0),
-    sellingPrice: Number(c.sellingPrice || 0),
-    image: String(c.image || ''),
-    isAvailable: c.isAvailable !== false,
-    description: String(c.description || ''),
-    badge: c.badge ? String(c.badge) : undefined,
-  }));
-}
-
-export async function createCombo(combo: Omit<Combo, 'id'>): Promise<Combo> {
-  const response = await fetch(`${API_BASE_URL}/combos`, {
-    method: 'POST',
-    headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(combo),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to create combo: HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.combo;
-}
-
-export async function updateCombo(id: string, updates: Partial<Combo>): Promise<Combo> {
-  const encodedId = encodeURIComponent(id);
-  const response = await fetch(`${API_BASE_URL}/combos/${encodedId}`, {
-    method: 'PUT',
-    headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(updates),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to update combo: HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.combo;
-}
-
-export async function toggleComboAvailability(id: string): Promise<Combo> {
-  const encodedId = encodeURIComponent(id);
-  const response = await fetch(`${API_BASE_URL}/combos/${encodedId}/availability`, {
-    method: 'PATCH',
-    headers: getAdminHeaders(),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to toggle combo availability: HTTP ${response.status}`);
-  }
-
-  const data = await response.json();
-  return data.combo;
-}
-
-export async function deleteCombo(id: string): Promise<{ success: boolean; message: string }> {
-  const encodedId = encodeURIComponent(id);
-  const response = await fetch(`${API_BASE_URL}/combos/${encodedId}`, {
-    method: 'DELETE',
-    headers: getAdminHeaders(),
-  });
-
-  if (!response.ok) {
-    const errorJson = await response.json().catch(() => ({}));
-    throw new Error(errorJson.message || `Failed to delete combo: HTTP ${response.status}`);
-  }
-
-  return await response.json();
 }
 
 // ----------------------------------------------------

@@ -13,9 +13,7 @@ import {
   ChevronRight,
   ChevronLeft,
   Clapperboard,
-  Pizza,
-  Layers,
-  FolderTree
+  Pizza
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -73,9 +71,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const menuSubItems = [
-    { label: 'Food Menu Management', path: '/menu/foods', icon: Pizza },
-    { label: 'Categories', path: '/menu/categories', icon: FolderTree },
-    { label: 'Combos', path: '/menu/combos', icon: Layers }
+    { label: 'Food Menu Management', path: '/menu/foods', icon: Pizza }
   ];
 
   return (
