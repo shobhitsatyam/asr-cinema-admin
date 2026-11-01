@@ -5,6 +5,7 @@ export interface FoodItem {
   name: string;
   category: string;
   type: FoodType;
+  foodType?: 'veg' | 'non-veg';
   price: number;
   originalPrice?: number;
   description: string;

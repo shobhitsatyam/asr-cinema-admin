@@ -117,11 +117,16 @@ export interface CategoryApiResponse {
 }
 
 function normalizeFoodItem(raw: Record<string, unknown>): FoodItem {
+  const rawFoodType = raw.foodType ? String(raw.foodType).toLowerCase() : undefined;
+  const isVeg = rawFoodType ? rawFoodType === 'veg' : (raw.type === 'Veg' || Boolean(raw.isVeg));
+  const foodType: 'veg' | 'non-veg' = isVeg ? 'veg' : 'non-veg';
+
   return {
     id: String(raw.id || raw._id || ''),
     name: String(raw.name || ''),
     category: String(raw.category || 'General'),
-    type: (raw.type as 'Veg' | 'Non-Veg') || (raw.isVeg ? 'Veg' : 'Non-Veg'),
+    type: isVeg ? 'Veg' : 'Non-Veg',
+    foodType,
     price: Number(raw.price ?? raw.basePrice ?? 0),
     originalPrice: raw.originalPrice ? Number(raw.originalPrice) : undefined,
     description: String(raw.description || ''),

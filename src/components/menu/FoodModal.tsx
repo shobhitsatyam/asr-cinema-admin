@@ -38,7 +38,7 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
     if (foodToEdit) {
       setName(foodToEdit.name);
       setCategory(foodToEdit.category);
-      setType(foodToEdit.type);
+      setType(foodToEdit.foodType ? (foodToEdit.foodType === 'non-veg' ? 'Non-Veg' : 'Veg') : foodToEdit.type);
       setPrice(foodToEdit.price);
       setOriginalPrice(foodToEdit.originalPrice || foodToEdit.price + 40);
       setPrepTime(foodToEdit.prepTime);
@@ -64,11 +64,14 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
     e.preventDefault();
     if (!name.trim()) return;
 
+    const computedFoodType: 'veg' | 'non-veg' = type === 'Non-Veg' ? 'non-veg' : 'veg';
+
     if (foodToEdit) {
       updateFood(foodToEdit.id, {
         name,
         category,
         type,
+        foodType: computedFoodType,
         price: Number(price),
         originalPrice: Number(originalPrice),
         prepTime,
@@ -83,6 +86,7 @@ export const FoodModal: React.FC<FoodModalProps> = ({ isOpen, onClose, foodToEdi
         name,
         category,
         type,
+        foodType: computedFoodType,
         price: Number(price),
         originalPrice: Number(originalPrice),
         prepTime,

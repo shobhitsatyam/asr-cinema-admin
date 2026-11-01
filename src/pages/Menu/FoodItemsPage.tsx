@@ -62,7 +62,10 @@ export const FoodItemsPage: React.FC = () => {
       const matchCategory =
         selectedCategory === 'All' || food.category.toLowerCase() === selectedCategory.toLowerCase();
 
-      const matchType = selectedType === 'All' || food.type === selectedType;
+      const itemDiet = food.foodType
+        ? (food.foodType.toLowerCase() === 'veg' ? 'Veg' : 'Non-Veg')
+        : food.type;
+      const matchType = selectedType === 'All' || itemDiet === selectedType;
 
       const matchAvailability =
         selectedAvailability === 'All' ||

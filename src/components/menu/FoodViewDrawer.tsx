@@ -71,7 +71,10 @@ export const FoodViewDrawer: React.FC<FoodViewDrawerProps> = ({
               gap: 6
             }}
           >
-            <Badge variant={food.type === 'Veg' ? 'veg' : 'non-veg'} label={food.type} />
+            <Badge
+              variant={(food.foodType ? food.foodType.toLowerCase() === 'veg' : food.type === 'Veg') ? 'veg' : 'non-veg'}
+              label={food.type || (food.foodType === 'non-veg' ? 'Non-Veg' : 'Veg')}
+            />
             <span
               style={{
                 fontSize: '0.75rem',
